@@ -90,7 +90,12 @@ def main() -> int:
         (
             "Temperature",
             "plots/monitor-temperature.png",
-            "각 run 동안의 최대 온도 변화를 보여줍니다. 온도가 계속 상승하거나 임계값에 가까워지면 thermal throttling으로 성능이 흔들릴 수 있습니다. 이번 환경의 기본 중단 임계값은 LAB_MAX_TEMP_C입니다.",
+            "각 run에서 관측된 최대 온도를 막대 그래프로 보여줍니다. 특정 workload나 후반 run에서만 온도가 높으면 성능 변동의 원인을 좁히는 데 유용합니다. 점선 임계값에 가까워지면 thermal throttling 가능성을 봐야 합니다.",
+        ),
+        (
+            "Temperature Timeline",
+            "plots/monitor-temperature-timeline.png",
+            "suite 전체 시간축에서 온도가 어떻게 변했는지 보여줍니다. 반복이 진행될수록 baseline 온도가 올라가는지, 특정 workload 구간에서 급상승하는지를 확인합니다.",
         ),
         (
             "CPU Frequency Scaling",

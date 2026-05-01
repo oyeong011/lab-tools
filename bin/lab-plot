@@ -3,7 +3,6 @@ import argparse
 import csv
 import math
 import sys
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
@@ -130,8 +129,23 @@ def parse_float(value: str) -> float | None:
     return number
 
 
-def collect_monitor(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
-    monitors = {}
+WORKLOAD_ORDER = {
+    "cpu": 0,
+    "standard-cpu": 1,
+    "opencl-vector": 2,
+    "opencl-gemm": 3,
+}
+
+
+def run_number(row: dict[str, str]) -> int:
+    try:
+        return int(row.get("run", "0"))
+    except ValueError:
+        return 0
+
+
+def collect_monitor(rows: list[dict[str, str]]) -> list[dict[str, object]]:
+    monitors = []
     for row in rows:
         run_dir = (row.get("run_dir") or "").strip()
         if not run_dir:
@@ -139,8 +153,18 @@ def collect_monitor(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]
         path = Path(run_dir) / "monitor.csv"
         data = read_monitor(path)
         if data:
-            label = f"{row.get('workload', 'run')} #{row.get('run', '?')}"
-            monitors[label] = data
+            workload = row.get("workload", "run")
+            run = row.get("run", "?")
+            monitors.append(
+                {
+                    "workload": workload,
+                    "run": run,
+                    "run_number": run_number(row),
+                    "label": f"{workload} #{run}",
+                    "data": data,
+                }
+            )
+    monitors.sort(key=lambda item: (WORKLOAD_ORDER.get(str(item["workload"]), 99), int(item["run_number"])))
     return monitors
 
 
@@ -159,41 +183,117 @@ def elapsed_seconds(rows: list[dict[str, str]]) -> list[float]:
     return elapsed
 
 
-def plot_monitor(monitors: dict[str, list[dict[str, str]]], out_dir: Path) -> list[Path]:
+def sample_time(row: dict[str, str]) -> datetime | None:
+    try:
+        return datetime.fromisoformat(row.get("timestamp", ""))
+    except ValueError:
+        return None
+
+
+def plot_temperature_by_run(monitors: list[dict[str, object]], out_dir: Path) -> Path | None:
+    values = []
+    for item in monitors:
+        data = item["data"]
+        temps = [parse_float(row.get("max_temp_c", "")) for row in data]  # type: ignore[index]
+        temps = [temp for temp in temps if temp is not None]
+        if temps:
+            values.append((str(item["label"]), max(temps), str(item["workload"])))
+    if not values:
+        return None
+
+    colors_by_workload = {
+        "cpu": "#4c78a8",
+        "standard-cpu": "#f58518",
+        "opencl-vector": "#54a24b",
+        "opencl-gemm": "#b279a2",
+    }
+    labels, temps, workloads = zip(*values)
+    fig_width = max(12, len(values) * 0.34)
+    fig, ax = plt.subplots(figsize=(fig_width, 5.5), constrained_layout=True)
+    ax.bar(range(len(temps)), temps, color=[colors_by_workload.get(w, "#777777") for w in workloads], width=0.72)
+    ax.set_title("Max Temperature by Run")
+    ax.set_xlabel("run")
+    ax.set_ylabel("C")
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=60, ha="right", fontsize=8)
+    ax.grid(axis="y", alpha=0.28)
+    ax.axhline(85, color="#d62728", linestyle="--", linewidth=1, label="LAB_MAX_TEMP_C=85")
+    ax.legend(fontsize=8)
+    out = out_dir / "monitor-temperature.png"
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+    return out
+
+
+def plot_monitor_timeline(
+    monitors: list[dict[str, object]],
+    out_dir: Path,
+    key: str,
+    filename: str,
+    title: str,
+    ylabel: str,
+    parser,
+) -> Path | None:
+    samples_by_workload: dict[str, list[tuple[datetime, float]]] = {}
+    for item in monitors:
+        workload = str(item["workload"])
+        data = item["data"]  # type: ignore[assignment]
+        for row in data:  # type: ignore[union-attr]
+            ts = sample_time(row)
+            value = parser(row.get(key, ""))
+            if ts is None or value is None:
+                continue
+            samples_by_workload.setdefault(workload, []).append((ts, value))
+
+    all_times = [ts for samples in samples_by_workload.values() for ts, _ in samples]
+    if not all_times:
+        return None
+    base = min(all_times)
+
+    colors_by_workload = {
+        "cpu": "#4c78a8",
+        "standard-cpu": "#f58518",
+        "opencl-vector": "#54a24b",
+        "opencl-gemm": "#b279a2",
+    }
+    fig, ax = plt.subplots(figsize=(12, 5.5), constrained_layout=True)
+    for workload in sorted(samples_by_workload, key=lambda w: WORKLOAD_ORDER.get(w, 99)):
+        samples = sorted(samples_by_workload[workload], key=lambda pair: pair[0])
+        xs = [(ts - base).total_seconds() for ts, _ in samples]
+        ys = [value for _, value in samples]
+        ax.plot(xs, ys, marker="o", linewidth=1.3, markersize=2.8, label=workload, color=colors_by_workload.get(workload))
+    ax.set_title(title)
+    ax.set_xlabel("seconds since first monitored sample in suite")
+    ax.set_ylabel(ylabel)
+    ax.grid(alpha=0.28)
+    ax.legend(fontsize=8)
+    if key == "max_temp_c":
+        ax.axhline(85, color="#d62728", linestyle="--", linewidth=1, label="LAB_MAX_TEMP_C=85")
+    out = out_dir / filename
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+    return out
+
+
+def plot_monitor(monitors: list[dict[str, object]], out_dir: Path) -> list[Path]:
     outputs = []
     if not monitors:
         return outputs
 
+    temp_by_run = plot_temperature_by_run(monitors, out_dir)
+    if temp_by_run:
+        outputs.append(temp_by_run)
+
     specs = [
-        ("max_temp_c", "monitor-temperature.png", "Temperature", "C", parse_float),
-        ("cpu_scaling_mhz_percent", "monitor-cpu-scaling.png", "CPU Frequency Scaling", "%", parse_percent),
-        ("load1", "monitor-load.png", "Load Average 1m", "load1", parse_float),
+        ("max_temp_c", "monitor-temperature-timeline.png", "Temperature Timeline", "C", parse_float),
+        ("cpu_scaling_mhz_percent", "monitor-cpu-scaling.png", "CPU Frequency Scaling Timeline", "%", parse_percent),
+        ("load1", "monitor-load.png", "Load Average 1m Timeline", "load1", parse_float),
     ]
 
     for key, filename, title, ylabel, parser in specs:
-        fig, ax = plt.subplots(figsize=(11, 5), constrained_layout=True)
-        plotted = 0
-        for label, data in monitors.items():
-            x = elapsed_seconds(data)
-            y = [parser(row.get(key, "")) for row in data]
-            xy = [(a, b) for a, b in zip(x, y) if b is not None]
-            if not xy:
-                continue
-            xs, ys = zip(*xy)
-            ax.plot(xs, ys, marker="o", linewidth=1.5, markersize=3, label=label)
-            plotted += 1
-        if plotted == 0:
-            plt.close(fig)
-            continue
-        ax.set_title(title)
-        ax.set_xlabel("seconds since run start")
-        ax.set_ylabel(ylabel)
-        ax.grid(alpha=0.28)
-        ax.legend(fontsize=8)
-        out = out_dir / filename
-        fig.savefig(out, dpi=140)
-        plt.close(fig)
-        outputs.append(out)
+        out = plot_monitor_timeline(monitors, out_dir, key, filename, title, ylabel, parser)
+        if out:
+            outputs.append(out)
     return outputs
 
 
