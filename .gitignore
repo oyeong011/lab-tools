@@ -5,4 +5,7 @@ __pycache__/
 _benchmarks/
 _hardware/
 runs/
-suites/
+*/runs/
+*/suites/
+!config/suites/
+!config/suites/*.env
