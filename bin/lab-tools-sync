@@ -28,9 +28,9 @@ for file in "$HOME"/.config/lab/*.c; do
 done
 
 mkdir -p "$REPO/config/suites" "$REPO/config/templates"
-for file in "$HOME"/.config/lab/suites/*.env; do
+for file in "$HOME"/.config/lab/suites/*.env "$HOME"/.config/lab/suites/*.yaml; do
   [ -e "$file" ] || continue
-  copy_file "$file" "$REPO/config/suites/$(basename "$file")"
+	  copy_file "$file" "$REPO/config/suites/$(basename "$file")"
 done
 for file in "$HOME"/.config/lab/templates/*; do
   [ -e "$file" ] || continue
@@ -59,8 +59,8 @@ Use `lab-tools-sync` from the active environment to refresh this repo after edit
 
 ```bash
 lab-doctor
-bench-suite-config quick
-bench-suite-config baseline
+	bench-suite-config quick.yaml
+	bench-suite-config baseline.yaml
 ```
 
 ## Safety
@@ -80,7 +80,8 @@ runs/
 */runs/
 */suites/
 !config/suites/
-!config/suites/*.env
+	!config/suites/*.env
+	!config/suites/*.yaml
 EOF
 
 if [ ! -d "$REPO/.git" ]; then

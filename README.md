@@ -16,8 +16,8 @@ Use `lab-tools-sync` from the active environment to refresh this repo after edit
 
 ```bash
 lab-doctor
-bench-suite-config quick
-bench-suite-config baseline
+	bench-suite-config quick.yaml
+	bench-suite-config baseline.yaml
 ```
 
 ## Safety

@@ -33,6 +33,7 @@ This machine is organized as a local CPU and AI accelerator experiment workstati
 - `lab-safe-run EXPERIMENT -- COMMAND`: run a command with timeout, low priority, logs, and thermal precheck
 - `monitor-run EXPERIMENT -- COMMAND`: same as `lab-safe-run`, with emphasis on `monitor.csv`
 - `bench-suite EXP REPEATS`: run repeated CPU/OpenCL baselines with hardware and sensor records
+- `bench-suite-config quick.yaml`: run a declarative YAML suite config
 - `summarize-suite SUITE_DIR`: extract CPU/OpenCL metrics into `summary.csv`
 - `render-suite-report SUITE_DIR`: generate a Markdown report from `summary.csv`
 - `suite-stats SUITE_DIR`: generate statistics, CV, and quality flags in `stats.csv`
@@ -76,6 +77,7 @@ This machine is organized as a local CPU and AI accelerator experiment workstati
 - Default timeout is 10 minutes.
 - `LAB_WARMUPS` controls warm-up runs, which are logged but excluded from `summary.csv`.
 - `LAB_REPEATS` or the second `bench-suite` argument controls measured runs.
+- Suite configs live under `~/.config/lab/suites/*.yaml`.
 - Runs use lower CPU and I/O priority by default.
 - Logs are stored under `~/lab/<experiment>/runs/<timestamp>`.
 - Sensor snapshots are captured before and after each run.

@@ -5,28 +5,82 @@ PATH="$HOME/bin:$PATH"
 CONFIG_NAME="${1:-quick}"
 CONFIG_PATH="$CONFIG_NAME"
 if [ ! -f "$CONFIG_PATH" ]; then
-  CONFIG_PATH="$HOME/.config/lab/suites/${CONFIG_NAME%.env}.env"
+  if [ -f "$HOME/.config/lab/suites/${CONFIG_NAME%.yaml}.yaml" ]; then
+    CONFIG_PATH="$HOME/.config/lab/suites/${CONFIG_NAME%.yaml}.yaml"
+  else
+    CONFIG_PATH="$HOME/.config/lab/suites/${CONFIG_NAME%.env}.env"
+  fi
 fi
 
 if [ ! -f "$CONFIG_PATH" ]; then
   printf 'Suite config not found: %s\n' "$CONFIG_NAME" >&2
   printf 'Available configs:\n' >&2
-  find "$HOME/.config/lab/suites" -maxdepth 1 -type f -name '*.env' -printf '  %f\n' | sort >&2
+  find "$HOME/.config/lab/suites" -maxdepth 1 -type f \( -name '*.env' -o -name '*.yaml' \) -printf '  %f\n' | sort >&2
   exit 2
 fi
 
 case "$CONFIG_PATH" in
-  "$HOME"/.config/lab/suites/*.env|/*/*.env|./*.env|*.env) ;;
+  "$HOME"/.config/lab/suites/*.env|"$HOME"/.config/lab/suites/*.yaml|/*/*.env|/*/*.yaml|./*.env|./*.yaml|*.env|*.yaml) ;;
   *)
     printf 'Refusing suspicious config path: %s\n' "$CONFIG_PATH" >&2
     exit 2
     ;;
 esac
 
-set -a
-# shellcheck disable=SC1090
-. "$CONFIG_PATH"
-set +a
+case "$CONFIG_PATH" in
+  *.yaml)
+    eval "$(python3 - "$CONFIG_PATH" <<'PY'
+import shlex
+import sys
+import yaml
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    data = yaml.safe_load(f) or {}
+
+env = {}
+if "experiment" in data:
+    env["EXPERIMENT"] = str(data["experiment"])
+if "warmups" in data:
+    env["LAB_WARMUPS"] = str(data["warmups"])
+if "repeats" in data:
+    env["LAB_REPEATS"] = str(data["repeats"])
+for key, value in (data.get("env") or {}).items():
+    env[str(key)] = str(value)
+
+allowed = {
+    "EXPERIMENT",
+    "LAB_WARMUPS",
+    "LAB_REPEATS",
+    "LAB_MONITOR_INTERVAL",
+    "LAB_MAX_TEMP_C",
+    "LAB_STREAM_ELEMENTS",
+    "LAB_STREAM_REPEATS",
+    "LAB_OPENBLAS_SIZE",
+    "LAB_OPENBLAS_REPEATS",
+    "LAB_SYSBENCH_THREADS",
+    "LAB_SYSBENCH_TIME",
+    "LAB_GEMM_SIZE",
+    "OPENBLAS_NUM_THREADS",
+    "OMP_NUM_THREADS",
+    "LAB_CPUSET",
+    "LAB_TIMEOUT",
+}
+
+for key in sorted(env):
+    if key not in allowed:
+        raise SystemExit(f"unsupported suite yaml key/env: {key}")
+    print(f"export {key}={shlex.quote(env[key])}")
+PY
+)"
+    ;;
+  *.env)
+    set -a
+    # shellcheck disable=SC1090
+    . "$CONFIG_PATH"
+    set +a
+    ;;
+esac
 
 EXPERIMENT="${EXPERIMENT:-cpu-ai-kernel-baseline}"
 REPEATS="${LAB_REPEATS:-3}"

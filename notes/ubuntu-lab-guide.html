@@ -265,6 +265,7 @@
         <tr><td><code>lab-safe-run EXP -- COMMAND</code></td><td>안전장치와 로그 저장을 포함해 명령 실행</td></tr>
         <tr><td><code>monitor-run EXP -- COMMAND</code></td><td><code>monitor.csv</code> 기록을 강조한 실행 wrapper</td></tr>
         <tr><td><code>bench-suite EXP REPEATS</code></td><td>CPU/OpenCL 벤치를 반복 실행하고 suite 결과 저장</td></tr>
+        <tr><td><code>bench-suite-config quick.yaml</code></td><td>YAML로 선언한 실험 프로토콜 실행</td></tr>
         <tr><td><code>summarize-suite SUITE_DIR</code></td><td>suite 로그에서 <code>summary.csv</code> 생성</td></tr>
         <tr><td><code>render-suite-report SUITE_DIR</code></td><td><code>summary.csv</code>에서 사람이 읽기 쉬운 <code>report.md</code> 생성</td></tr>
         <tr><td><code>suite-stats SUITE_DIR</code></td><td>반복 실험의 평균, 중앙값, 표준편차, CV, 품질 플래그 생성</td></tr>
@@ -292,6 +293,10 @@ lab go my-test</code></pre>
 
       <h3>warm-up 3회 + measured 10회 프로토콜</h3>
       <pre><code>LAB_WARMUPS=3 LAB_REPEATS=10 bench-suite cpu-ai-kernel-baseline</code></pre>
+
+      <h3>YAML 선언형 suite 실행</h3>
+      <pre><code>bench-suite-config quick.yaml
+bench-suite-config baseline.yaml</code></pre>
 
       <h3>긴 실험을 5초 간격으로 모니터링</h3>
       <pre><code>LAB_MONITOR_INTERVAL=5 monitor-run cpu-ai-kernel-baseline -- ./your-long-test</code></pre>

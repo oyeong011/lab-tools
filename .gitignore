@@ -8,4 +8,5 @@ runs/
 */runs/
 */suites/
 !config/suites/
-!config/suites/*.env
+	!config/suites/*.env
+	!config/suites/*.yaml
