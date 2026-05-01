@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+warn=0
+
+check_cmd() {
+  if command -v "$1" >/dev/null 2>&1; then
+    printf 'ok   command %-18s %s\n' "$1" "$(command -v "$1")"
+  else
+    printf 'info command %-18s missing\n' "$1"
+    warn=$((warn + 1))
+  fi
+}
+
+printf '== NVIDIA Lab Readiness ==\n'
+printf 'time=%s\n\n' "$(date --iso-8601=seconds)"
+
+check_cmd nvidia-smi
+check_cmd nvcc
+check_cmd podman
+check_cmd nvidia-ctk
+
+printf '\n== PCI devices ==\n'
+if command -v lspci >/dev/null 2>&1; then
+  lspci | grep -Ei 'nvidia|vga|3d|display' || true
+else
+  printf 'lspci missing\n'
+fi
+
+printf '\n== Driver ==\n'
+if command -v nvidia-smi >/dev/null 2>&1; then
+  nvidia-smi || warn=$((warn + 1))
+else
+  printf 'NVIDIA driver is not active yet.\n'
+fi
+
+printf '\n== Container GPU CDI ==\n'
+if [ -e /etc/cdi/nvidia.yaml ]; then
+  printf 'ok   CDI spec /etc/cdi/nvidia.yaml\n'
+else
+  printf 'info CDI spec missing. After installing NVIDIA Container Toolkit, run: sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml\n'
+fi
+
+printf '\n== ONNX Runtime GPU Python ==\n'
+if python3 -c 'import onnxruntime as ort; print(ort.get_available_providers())' 2>/dev/null; then
+  :
+else
+  printf 'info onnxruntime-gpu is not installed in the host Python environment.\n'
+fi
+
+printf '\n== Summary ==\n'
+if command -v nvidia-smi >/dev/null 2>&1; then
+  printf 'status=driver-visible\n'
+else
+  printf 'status=waiting-for-nvidia-gpu\n'
+fi

@@ -18,7 +18,7 @@ for file in \
   bench-standard-cpu bench-stream bench-suite bench-suite-config bench-sysbench \
 	  hw-report lab lab-doctor lab-manifest lab-safe-run lab-tools-sync monitor-run \
 	  nvidia-check render-suite-report sensor-snapshot suite-stats summarize-suite thermal-check \
-	  lab-index lab-archive lab-backup lab-plot lab-clean
+	  lab-index lab-archive lab-backup lab-plot lab-clean lab-container-build lab-container-run lab-nvidia-ready
 do
   copy_file "$HOME/bin/$file" "$REPO/bin/$file"
 done
@@ -36,6 +36,11 @@ done
 for file in "$HOME"/.config/lab/templates/*; do
   [ -e "$file" ] || continue
   copy_file "$file" "$REPO/config/templates/$(basename "$file")"
+done
+mkdir -p "$REPO/config/containers"
+for file in "$HOME"/.config/lab/containers/*; do
+  [ -e "$file" ] || continue
+  copy_file "$file" "$REPO/config/containers/$(basename "$file")"
 done
 
 copy_file "$HOME/notes/ubuntu-lab-profile.md" "$REPO/notes/ubuntu-lab-profile.md"
@@ -60,6 +65,8 @@ Use `lab-tools-sync` from the active environment to refresh this repo after edit
 
 ```bash
 	lab-doctor
+	lab-container-build cpu
+	lab-container-run -- bench-standard-cpu
 	bench-suite-config quick.yaml
 	bench-suite-config baseline.yaml
 	lab-index

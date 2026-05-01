@@ -270,6 +270,9 @@
         <tr><td><code>render-suite-report SUITE_DIR</code></td><td><code>summary.csv</code>에서 사람이 읽기 쉬운 <code>report.md</code> 생성</td></tr>
         <tr><td><code>suite-stats SUITE_DIR</code></td><td>반복 실험의 평균, 중앙값, 표준편차, CV, 품질 플래그 생성</td></tr>
         <tr><td><code>lab-plot latest</code></td><td>최근 suite의 성능, 온도, load 그래프를 PNG로 생성</td></tr>
+        <tr><td><code>lab-container-build cpu</code></td><td>rootless Podman CPU 실험 이미지를 빌드</td></tr>
+        <tr><td><code>lab-container-run -- COMMAND</code></td><td><code>~/lab</code>을 마운트한 격리 컨테이너에서 명령 실행</td></tr>
+        <tr><td><code>lab-nvidia-ready</code></td><td>미래 NVIDIA GPU의 드라이버, CUDA, 컨테이너 CDI, ONNX Runtime GPU 준비 상태 점검</td></tr>
         <tr><td><code>lab-doctor</code></td><td>실험 전 도구, OpenCL, 온도, 필수 파일 상태 점검</td></tr>
         <tr><td><code>lab-index</code></td><td>전체 suite 결과를 <code>~/lab/suite-index.csv</code>로 모음</td></tr>
         <tr><td><code>lab-archive latest</code></td><td>최근 suite를 checksum 포함 압축 보관</td></tr>
@@ -311,6 +314,10 @@ lab-backup</code></pre>
       <h3>최근 suite 그래프 생성</h3>
       <pre><code>lab-plot latest</code></pre>
 
+      <h3>격리된 CPU 컨테이너에서 벤치 실행</h3>
+      <pre><code>lab-container-build cpu
+lab-container-run -- bench-standard-cpu</code></pre>
+
       <h3>오래된 원시 run 정리</h3>
       <pre><code>lab-clean --days 30
 lab-clean --days 30 --apply</code></pre>
@@ -322,7 +329,8 @@ lab-clean --days 30 --apply</code></pre>
       <pre><code>LAB_MAX_TEMP_C=80 lab-safe-run cpu-ai-kernel-baseline -- bench-opencl</code></pre>
 
       <h3>나중에 NVIDIA GPU 장착 후 확인</h3>
-      <pre><code>nvidia-check
+      <pre><code>lab-nvidia-ready
+nvidia-check
 ai-accel-check</code></pre>
     </section>
 
@@ -378,8 +386,9 @@ ai-accel-check</code></pre>
         <li>OpenCL GEMM은 추가됐지만 아직 naive 커널입니다. tiling/shared local memory 최적화 GEMM과 batch 변화 벤치가 더 필요합니다.</li>
         <li>HD Graphics 630은 실험용 compute 장치로는 쓸 수 있지만, 최신 AI accelerator 수준의 성능은 기대하기 어렵습니다.</li>
         <li>NVIDIA GPU가 들어오면 CUDA/cuDNN/ONNX Runtime GPU 경로를 별도로 추가해야 합니다.</li>
+        <li>현재는 rootless Podman CPU 컨테이너가 준비되어 있으며, NVIDIA 컨테이너 GPU 패스스루는 실제 GPU와 드라이버 설치 후 활성화합니다.</li>
         <li>SYCL/oneAPI 개발 환경은 아직 설치하지 않았습니다.</li>
-        <li>Docker/Podman 기반 격리 실험 환경은 아직 추가하지 않았습니다.</li>
+        <li>Docker daemon 대신 Podman을 사용해 daemon 의존성과 권한 노출을 줄였습니다.</li>
         <li>dotfiles 저장소화와 백업 자동화는 다음 단계입니다.</li>
       </ul>
     </section>
@@ -394,6 +403,7 @@ ai-accel-check</code></pre>
         <li>각 run은 <code>result.json</code>에 성공/실패, timeout, thermal abort 여부를 기록합니다.</li>
         <li>반복 suite는 <code>stats.csv</code>에 평균, 중앙값, 표준편차, CV, 품질 플래그를 기록합니다.</li>
         <li><code>lab-plot</code>은 suite의 성능 지표와 실행 중 온도/load 변화를 PNG로 남깁니다.</li>
+        <li><code>lab-container-run</code>은 rootless Podman, cap-drop, no-new-privileges, memory/pids 제한을 사용합니다.</li>
         <li>중요한 suite는 <code>lab-archive</code>로 checksum과 함께 압축 보관합니다.</li>
         <li><code>lab-backup</code>은 원시 대용량 로그 대신 핵심 산출물 중심으로 백업합니다.</li>
         <li><code>lab-clean</code>은 기본적으로 dry-run이며, 실제 삭제는 <code>--apply</code>를 명시해야 합니다.</li>

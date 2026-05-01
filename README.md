@@ -16,6 +16,8 @@ Use `lab-tools-sync` from the active environment to refresh this repo after edit
 
 ```bash
 	lab-doctor
+	lab-container-build cpu
+	lab-container-run -- bench-standard-cpu
 	bench-suite-config quick.yaml
 	bench-suite-config baseline.yaml
 	lab-index

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+template="${1:-cpu}"
+image="${LAB_CONTAINER_IMAGE:-localhost/lab-${template}:24.04}"
+containerfile="$HOME/.config/lab/containers/Containerfile.${template}"
+
+if ! command -v podman >/dev/null 2>&1; then
+  printf 'podman is not installed\n' >&2
+  exit 127
+fi
+
+if [ ! -f "$containerfile" ]; then
+  printf 'container template not found: %s\n' "$containerfile" >&2
+  exit 2
+fi
+
+podman build \
+  --pull=missing \
+  --tag "$image" \
+  --file "$containerfile" \
+  "$HOME/.config/lab/containers"
+
+printf 'Built image: %s\n' "$image"

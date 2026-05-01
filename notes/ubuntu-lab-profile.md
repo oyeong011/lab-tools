@@ -38,6 +38,9 @@ This machine is organized as a local CPU and AI accelerator experiment workstati
 - `render-suite-report SUITE_DIR`: generate a Markdown report from `summary.csv`
 - `suite-stats SUITE_DIR`: generate statistics, CV, and quality flags in `stats.csv`
 - `lab-plot latest`: generate PNG plots from the latest suite summary and monitor logs
+- `lab-container-build cpu`: build the rootless Podman CPU experiment image
+- `lab-container-run -- COMMAND`: run a command in the CPU experiment container with `~/lab` mounted
+- `lab-nvidia-ready`: check NVIDIA driver, CUDA compiler, container CDI, and ONNX Runtime GPU readiness
 - `lab-manifest RUN_DIR EXP WORKDIR -- COMMAND`: record run provenance as `manifest.json`
 - `lab-doctor`: run a preflight check for tools, OpenCL, files, and temperature
 - `lab-index`: collect all suite summaries into `~/lab/suite-index.csv`
@@ -66,12 +69,13 @@ This machine is organized as a local CPU and AI accelerator experiment workstati
 - OpenCL: Intel OpenCL Graphics runtime installed and HD Graphics 630 detected
 - Discrete NVIDIA/AMD/Coral/other accelerator: not currently detected on PCIe or USB
 - Future NVIDIA GPU path: install via Ubuntu Additional Drivers, then verify with `nvidia-check`
+- Container isolation: rootless Podman image `localhost/lab-cpu:24.04` is built for CPU baselines
 - Memory: 15 GiB
 - Disk free on `/`: about 350 GiB
 
 ## Next Candidates
 
-- Add Docker or Podman for isolated experiments.
+- After NVIDIA GPU installation, add NVIDIA Container Toolkit/CDI and a CUDA/ONNX Runtime GPU container image.
 - Add a dotfiles Git repository for repeatable setup.
 - Add backup scripts for `~/lab` and `~/notes`.
 - Add per-language templates under `~/.config/lab/templates`.
@@ -91,6 +95,8 @@ This machine is organized as a local CPU and AI accelerator experiment workstati
 - Runtime thermal abort uses exit code 98; thermal precheck failure uses exit code 99.
 - Use `lab-index` to find previous suites.
 - Use `lab-plot latest` to inspect summary and temperature/load graphs.
+- Use `lab-container-run -- bench-standard-cpu` for isolated CPU baseline checks.
+- Use `lab-nvidia-ready` after installing a future NVIDIA GPU.
 - Use `lab-backup` before risky changes or after important experiments.
 - Use `lab-clean` in dry-run mode first; add `--apply` only after checking the deletion list.
 - Avoid kernel parameters, overclocking, and external driver repositories until baseline data is stable.

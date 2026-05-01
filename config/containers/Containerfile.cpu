@@ -1,0 +1,32 @@
+FROM docker.io/library/ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        build-essential \
+        clinfo \
+        gcc \
+        git \
+        libopenblas-dev \
+        make \
+        ocl-icd-opencl-dev \
+        opencl-headers \
+        python3 \
+        python3-matplotlib \
+        rsync \
+        sysbench \
+        time \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
+    && if [ -n "$existing_user" ]; then \
+        usermod -l lab -d /home/lab -m "$existing_user"; \
+      else \
+        useradd -m -u 1000 lab; \
+      fi
+USER lab
+WORKDIR /workspace
+
+ENV PATH=/home/lab/bin:/usr/local/bin:/usr/bin:/bin

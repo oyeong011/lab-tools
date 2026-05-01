@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+image="${LAB_CONTAINER_IMAGE:-localhost/lab-cpu:24.04}"
+
+if ! command -v podman >/dev/null 2>&1; then
+  printf 'podman is not installed\n' >&2
+  exit 127
+fi
+
+if [ "${1:-}" = "--" ]; then
+  shift
+fi
+
+if [ "$#" -eq 0 ]; then
+  set -- bash
+fi
+
+if ! podman image exists "$image"; then
+  printf 'Image not found: %s\n' "$image" >&2
+  printf 'Build it with: lab-container-build cpu\n' >&2
+  exit 2
+fi
+
+args=(
+  run
+  --rm
+  --user=0:0
+  --security-opt=no-new-privileges
+  --cap-drop=all
+  --pids-limit=512
+  --memory="${LAB_CONTAINER_MEMORY:-8g}"
+  --env=HOME=/root
+  --env=PATH=/root/bin:/usr/local/bin:/usr/bin:/bin
+  --env=LAB_MAX_TEMP_C="${LAB_MAX_TEMP_C:-85}"
+  --volume="$HOME/lab:/root/lab:rw"
+  --volume="$HOME/bin:/root/bin:ro"
+  --volume="$HOME/.config/lab:/root/.config/lab:ro"
+)
+
+if [ -t 0 ] && [ -t 1 ]; then
+  args+=(--interactive --tty)
+fi
+
+if [ -n "${LAB_CONTAINER_CPUS:-}" ]; then
+  args+=(--cpus="$LAB_CONTAINER_CPUS")
+fi
+
+case "$PWD" in
+  "$HOME/lab"|"$HOME/lab"/*)
+    args+=(--volume="$PWD:/workspace:rw" --workdir=/workspace)
+    ;;
+  *)
+    args+=(--workdir=/root/lab)
+    ;;
+esac
+
+if [ -d /dev/dri ]; then
+  args+=(--device=/dev/dri)
+fi
+
+if command -v nvidia-smi >/dev/null 2>&1 && [ -e /etc/cdi/nvidia.yaml ]; then
+  args+=(--device=nvidia.com/gpu=all)
+fi
+
+exec podman "${args[@]}" "$image" "$@"
