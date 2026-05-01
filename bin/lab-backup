@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+PATH="$HOME/bin:$PATH"
+
+BACKUP_ROOT="${1:-$HOME/backups/lab}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+OUT_DIR="$BACKUP_ROOT/$STAMP"
+
+mkdir -p "$OUT_DIR"
+
+lab-tools-sync >/dev/null
+lab-index "$HOME/lab/suite-index.csv" >/dev/null
+
+rsync -a --delete "$HOME/lab-tools/" "$OUT_DIR/lab-tools/"
+rsync -a "$HOME/notes/" "$OUT_DIR/notes/"
+mkdir -p "$OUT_DIR/lab"
+
+find "$HOME/lab" -path '*/suites/*' -type f \( \
+  -name 'summary.md' -o -name 'summary.csv' -o -name 'stats.csv' -o -name 'report.md' \
+  -o -name 'manifest.json' -o -name 'result.json' -o -name 'hardware-report-path.txt' \
+\) -print0 | while IFS= read -r -d '' file; do
+  rel="${file#$HOME/lab/}"
+  mkdir -p "$OUT_DIR/lab/$(dirname "$rel")"
+  cp -p "$file" "$OUT_DIR/lab/$rel"
+done
+
+if [ -d "$HOME/lab/_hardware" ]; then
+  rsync -a "$HOME/lab/_hardware/" "$OUT_DIR/lab/_hardware/"
+fi
+if [ -f "$HOME/lab/suite-index.csv" ]; then
+  cp -p "$HOME/lab/suite-index.csv" "$OUT_DIR/lab/suite-index.csv"
+fi
+
+tar -czf "$BACKUP_ROOT/lab-backup-$STAMP.tar.gz" -C "$BACKUP_ROOT" "$STAMP"
+sha256sum "$BACKUP_ROOT/lab-backup-$STAMP.tar.gz" > "$BACKUP_ROOT/lab-backup-$STAMP.tar.gz.sha256"
+
+printf 'backup_dir=%s\n' "$OUT_DIR"
+printf 'backup_tar=%s\n' "$BACKUP_ROOT/lab-backup-$STAMP.tar.gz"

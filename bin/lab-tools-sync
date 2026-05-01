@@ -16,8 +16,9 @@ copy_file() {
 for file in \
   ai-accel-check bench-cpu bench-openblas bench-opencl bench-opencl-gemm \
   bench-standard-cpu bench-stream bench-suite bench-suite-config bench-sysbench \
-  hw-report lab lab-doctor lab-manifest lab-safe-run lab-tools-sync monitor-run \
-  nvidia-check render-suite-report sensor-snapshot suite-stats summarize-suite thermal-check
+	  hw-report lab lab-doctor lab-manifest lab-safe-run lab-tools-sync monitor-run \
+	  nvidia-check render-suite-report sensor-snapshot suite-stats summarize-suite thermal-check \
+	  lab-index lab-archive lab-backup
 do
   copy_file "$HOME/bin/$file" "$REPO/bin/$file"
 done
@@ -58,9 +59,12 @@ Use `lab-tools-sync` from the active environment to refresh this repo after edit
 ## Common Commands
 
 ```bash
-lab-doctor
+	lab-doctor
 	bench-suite-config quick.yaml
 	bench-suite-config baseline.yaml
+	lab-index
+	lab-archive latest
+	lab-backup
 ```
 
 ## Safety

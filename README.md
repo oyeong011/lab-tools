@@ -15,9 +15,12 @@ Use `lab-tools-sync` from the active environment to refresh this repo after edit
 ## Common Commands
 
 ```bash
-lab-doctor
+	lab-doctor
 	bench-suite-config quick.yaml
 	bench-suite-config baseline.yaml
+	lab-index
+	lab-archive latest
+	lab-backup
 ```
 
 ## Safety

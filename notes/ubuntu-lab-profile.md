@@ -39,6 +39,9 @@ This machine is organized as a local CPU and AI accelerator experiment workstati
 - `suite-stats SUITE_DIR`: generate statistics, CV, and quality flags in `stats.csv`
 - `lab-manifest RUN_DIR EXP WORKDIR -- COMMAND`: record run provenance as `manifest.json`
 - `lab-doctor`: run a preflight check for tools, OpenCL, files, and temperature
+- `lab-index`: collect all suite summaries into `~/lab/suite-index.csv`
+- `lab-archive latest`: compress a suite with checksum under `~/lab/_archives`
+- `lab-backup`: back up lab tools, notes, hardware reports, and key suite artifacts
 - `take NAME`: create an experiment and cd into it
 - `t`: open or attach tmux session `main`
 - `tls`: list tmux sessions
@@ -84,4 +87,6 @@ This machine is organized as a local CPU and AI accelerator experiment workstati
 - Continuous monitor samples are stored in `monitor.csv` for each run.
 - Each run stores `manifest.json` and `result.json`.
 - Runtime thermal abort uses exit code 98; thermal precheck failure uses exit code 99.
+- Use `lab-index` to find previous suites.
+- Use `lab-backup` before risky changes or after important experiments.
 - Avoid kernel parameters, overclocking, and external driver repositories until baseline data is stable.

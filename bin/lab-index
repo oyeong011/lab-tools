@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+import csv
+import json
+import sys
+from pathlib import Path
+
+
+LAB_HOME = Path.home() / "lab"
+
+
+def read_summary_md(path):
+    data = {"experiment": "", "warmups": "", "repeats": "", "started": "", "finished": ""}
+    if not path.exists():
+        return data
+    for line in path.read_text(errors="replace").splitlines():
+        line = line.strip()
+        for key, label in [
+            ("experiment", "- Experiment:"),
+            ("warmups", "- Warmups:"),
+            ("repeats", "- Repeats:"),
+            ("started", "- Started:"),
+            ("finished", "- Finished:"),
+        ]:
+            if line.startswith(label):
+                data[key] = line.split("`")[1] if "`" in line else line[len(label):].strip()
+    return data
+
+
+def count_status(summary_csv):
+    counts = {"ok": 0, "failed": 0, "unknown": 0}
+    workloads = []
+    if not summary_csv.exists():
+        return counts, workloads
+    with summary_csv.open(newline="") as f:
+        for row in csv.DictReader(f):
+            status = row.get("status") or "unknown"
+            counts[status if status in counts else "unknown"] += 1
+            workloads.append(row.get("workload", ""))
+    return counts, workloads
+
+
+def quality(stats_csv):
+    if not stats_csv.exists():
+        return "missing"
+    qualities = []
+    with stats_csv.open(newline="") as f:
+        for row in csv.DictReader(f):
+            qualities.append(row.get("quality", ""))
+    if not qualities:
+        return "empty"
+    if any(q == "unstable" for q in qualities):
+        return "unstable"
+    if any(q == "low_n" for q in qualities):
+        return "low_n"
+    return "ok"
+
+
+def main():
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else LAB_HOME / "suite-index.csv"
+    rows = []
+    for summary_csv in sorted(LAB_HOME.glob("*/suites/*/summary.csv")):
+        suite_dir = summary_csv.parent
+        meta = read_summary_md(suite_dir / "summary.md")
+        counts, workloads = count_status(summary_csv)
+        rows.append({
+            "suite_dir": str(suite_dir),
+            "experiment": meta["experiment"] or suite_dir.parents[1].name,
+            "suite_id": suite_dir.name,
+            "started": meta["started"],
+            "finished": meta["finished"],
+            "warmups": meta["warmups"],
+            "repeats": meta["repeats"],
+            "ok": counts["ok"],
+            "failed": counts["failed"],
+            "unknown": counts["unknown"],
+            "quality": quality(suite_dir / "stats.csv"),
+            "workloads": "|".join(dict.fromkeys(w for w in workloads if w)),
+            "report": str(suite_dir / "report.md") if (suite_dir / "report.md").exists() else "",
+        })
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fields = ["suite_dir", "experiment", "suite_id", "started", "finished", "warmups", "repeats", "ok", "failed", "unknown", "quality", "workloads", "report"]
+    with out.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(out)
+    print(f"suites={len(rows)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
