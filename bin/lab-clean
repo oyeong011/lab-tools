@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+import argparse
+import shutil
+import sys
+import time
+from pathlib import Path
+
+
+LAB = Path.home() / "lab"
+
+
+def valid_run_dir(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    return (path / "result.json").exists() or (path / "status.txt").exists()
+
+
+def find_candidates(days: float, experiment: str | None) -> list[Path]:
+    cutoff = time.time() - days * 86400
+    experiments = [LAB / experiment] if experiment else sorted(p for p in LAB.iterdir() if p.is_dir())
+    candidates = []
+    for exp in experiments:
+        runs = exp / "runs"
+        if not runs.is_dir():
+            continue
+        for run in sorted(runs.iterdir()):
+            if not valid_run_dir(run):
+                continue
+            if run.stat().st_mtime <= cutoff:
+                candidates.append(run)
+    return candidates
+
+
+def human_size(path: Path) -> int:
+    total = 0
+    for item in path.rglob("*"):
+        try:
+            if item.is_file() or item.is_symlink():
+                total += item.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def fmt_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024 or unit == "GiB":
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024
+    return f"{value:.1f} GiB"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Safely clean old raw run directories under ~/lab/*/runs. Dry-run by default."
+    )
+    parser.add_argument("--days", type=float, default=30, help="delete/list runs older than this many days")
+    parser.add_argument("--experiment", help="limit to one experiment directory name under ~/lab")
+    parser.add_argument("--apply", action="store_true", help="actually delete candidates")
+    args = parser.parse_args()
+
+    if args.days < 0:
+        print("--days must be >= 0", file=sys.stderr)
+        return 2
+
+    candidates = find_candidates(args.days, args.experiment)
+    total_size = sum(human_size(path) for path in candidates)
+
+    mode = "APPLY" if args.apply else "DRY-RUN"
+    print(f"mode={mode} days={args.days:g} candidates={len(candidates)} total={fmt_size(total_size)}")
+    for path in candidates:
+        print(path)
+
+    if not args.apply:
+        print("No files deleted. Re-run with --apply to delete listed raw run directories.")
+        return 0
+
+    for path in candidates:
+        shutil.rmtree(path)
+    print(f"Deleted {len(candidates)} run directories.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

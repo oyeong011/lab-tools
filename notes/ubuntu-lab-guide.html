@@ -269,10 +269,12 @@
         <tr><td><code>summarize-suite SUITE_DIR</code></td><td>suite 로그에서 <code>summary.csv</code> 생성</td></tr>
         <tr><td><code>render-suite-report SUITE_DIR</code></td><td><code>summary.csv</code>에서 사람이 읽기 쉬운 <code>report.md</code> 생성</td></tr>
         <tr><td><code>suite-stats SUITE_DIR</code></td><td>반복 실험의 평균, 중앙값, 표준편차, CV, 품질 플래그 생성</td></tr>
+        <tr><td><code>lab-plot latest</code></td><td>최근 suite의 성능, 온도, load 그래프를 PNG로 생성</td></tr>
         <tr><td><code>lab-doctor</code></td><td>실험 전 도구, OpenCL, 온도, 필수 파일 상태 점검</td></tr>
         <tr><td><code>lab-index</code></td><td>전체 suite 결과를 <code>~/lab/suite-index.csv</code>로 모음</td></tr>
         <tr><td><code>lab-archive latest</code></td><td>최근 suite를 checksum 포함 압축 보관</td></tr>
         <tr><td><code>lab-backup</code></td><td>도구, 문서, 하드웨어 리포트, 핵심 suite 결과 백업</td></tr>
+        <tr><td><code>lab-clean --days 30</code></td><td>오래된 원시 run 디렉터리 삭제 후보를 dry-run으로 확인</td></tr>
       </table>
     </section>
 
@@ -305,6 +307,13 @@ bench-suite-config baseline.yaml</code></pre>
       <pre><code>lab-index
 lab-archive latest
 lab-backup</code></pre>
+
+      <h3>최근 suite 그래프 생성</h3>
+      <pre><code>lab-plot latest</code></pre>
+
+      <h3>오래된 원시 run 정리</h3>
+      <pre><code>lab-clean --days 30
+lab-clean --days 30 --apply</code></pre>
 
       <h3>긴 실험을 5초 간격으로 모니터링</h3>
       <pre><code>LAB_MONITOR_INTERVAL=5 monitor-run cpu-ai-kernel-baseline -- ./your-long-test</code></pre>
@@ -384,8 +393,10 @@ ai-accel-check</code></pre>
         <li>각 run은 <code>manifest.json</code>에 커널, 패키지, OpenCL, 명령, 스크립트 checksum을 기록합니다.</li>
         <li>각 run은 <code>result.json</code>에 성공/실패, timeout, thermal abort 여부를 기록합니다.</li>
         <li>반복 suite는 <code>stats.csv</code>에 평균, 중앙값, 표준편차, CV, 품질 플래그를 기록합니다.</li>
+        <li><code>lab-plot</code>은 suite의 성능 지표와 실행 중 온도/load 변화를 PNG로 남깁니다.</li>
         <li>중요한 suite는 <code>lab-archive</code>로 checksum과 함께 압축 보관합니다.</li>
         <li><code>lab-backup</code>은 원시 대용량 로그 대신 핵심 산출물 중심으로 백업합니다.</li>
+        <li><code>lab-clean</code>은 기본적으로 dry-run이며, 실제 삭제는 <code>--apply</code>를 명시해야 합니다.</li>
         <li>커널 파라미터, 오버클럭, 외부 드라이버 저장소는 baseline이 충분히 쌓이기 전까지 피합니다.</li>
         <li>결과는 로그와 CSV로 남겨 비교 가능하게 관리합니다.</li>
       </ul>

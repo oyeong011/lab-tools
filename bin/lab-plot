@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+import argparse
+import csv
+import math
+import sys
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
+LAB = Path.home() / "lab"
+
+
+def latest_suite() -> Path:
+    candidates = sorted(LAB.glob("*/suites/*/summary.csv"), key=lambda p: p.stat().st_mtime)
+    if not candidates:
+        raise SystemExit("No suite summary.csv found under ~/lab/*/suites")
+    return candidates[-1].parent
+
+
+def suite_path(value: str) -> Path:
+    if value == "latest":
+        return latest_suite()
+    path = Path(value).expanduser()
+    if path.is_file() and path.name == "summary.csv":
+        path = path.parent
+    if not path.exists():
+        raise SystemExit(f"Suite not found: {path}")
+    return path
+
+
+def read_summary(suite: Path) -> list[dict[str, str]]:
+    summary = suite / "summary.csv"
+    if not summary.exists():
+        raise SystemExit(f"Missing summary.csv: {summary}")
+    with summary.open(newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def floats(rows: list[dict[str, str]], metric: str) -> list[tuple[str, float]]:
+    values = []
+    for row in rows:
+        raw = (row.get(metric) or "").strip()
+        if not raw:
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            continue
+        label = f"{row.get('workload', 'run')} #{row.get('run', '?')}"
+        values.append((label, value))
+    return values
+
+
+def bar_panel(ax, rows: list[dict[str, str]], metric: str, title: str, ylabel: str) -> bool:
+    values = floats(rows, metric)
+    if not values:
+        ax.axis("off")
+        return False
+    labels, numbers = zip(*values)
+    colors = ["#4c78a8" if n >= 0 else "#d62728" for n in numbers]
+    ax.bar(range(len(numbers)), numbers, color=colors, width=0.68)
+    ax.set_title(title, fontsize=10)
+    ax.set_ylabel(ylabel, fontsize=9)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=8)
+    ax.grid(axis="y", alpha=0.28)
+    return True
+
+
+def plot_summary(suite: Path, rows: list[dict[str, str]], out_dir: Path) -> Path | None:
+    metrics = [
+        ("scalar_fma_mean_s", "Scalar FMA", "seconds"),
+        ("memory_walk_mean_s", "Memory Walk", "seconds"),
+        ("sha256_mean_s", "SHA256", "seconds"),
+        ("stream_triad_mb_s", "STREAM Triad", "MB/s"),
+        ("openblas_gflops", "OpenBLAS GEMM", "GFLOP/s"),
+        ("sysbench_events_s", "Sysbench CPU", "events/s"),
+        ("opencl_bandwidth_gbs", "OpenCL Vector", "GB/s"),
+        ("gemm_gflops", "OpenCL GEMM", "GFLOP/s"),
+    ]
+
+    fig, axes = plt.subplots(4, 2, figsize=(13, 15), constrained_layout=True)
+    plotted = 0
+    for ax, (metric, title, ylabel) in zip(axes.flat, metrics):
+        if bar_panel(ax, rows, metric, title, ylabel):
+            plotted += 1
+    fig.suptitle(f"Suite Summary: {suite.name}", fontsize=14)
+    if plotted == 0:
+        plt.close(fig)
+        return None
+    out = out_dir / "summary-metrics.png"
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+    return out
+
+
+def read_monitor(path: Path) -> list[dict[str, str]]:
+    try:
+        with path.open(newline="") as handle:
+            return list(csv.DictReader(handle))
+    except OSError:
+        return []
+
+
+def parse_percent(value: str) -> float | None:
+    value = value.strip().rstrip("%")
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def parse_float(value: str) -> float | None:
+    if not value:
+        return None
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    if math.isnan(number) or math.isinf(number):
+        return None
+    return number
+
+
+def collect_monitor(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
+    monitors = {}
+    for row in rows:
+        run_dir = (row.get("run_dir") or "").strip()
+        if not run_dir:
+            continue
+        path = Path(run_dir) / "monitor.csv"
+        data = read_monitor(path)
+        if data:
+            label = f"{row.get('workload', 'run')} #{row.get('run', '?')}"
+            monitors[label] = data
+    return monitors
+
+
+def elapsed_seconds(rows: list[dict[str, str]]) -> list[float]:
+    base = None
+    elapsed = []
+    for i, row in enumerate(rows):
+        raw = row.get("timestamp", "")
+        try:
+            ts = datetime.fromisoformat(raw)
+            if base is None:
+                base = ts
+            elapsed.append((ts - base).total_seconds())
+        except ValueError:
+            elapsed.append(float(i))
+    return elapsed
+
+
+def plot_monitor(monitors: dict[str, list[dict[str, str]]], out_dir: Path) -> list[Path]:
+    outputs = []
+    if not monitors:
+        return outputs
+
+    specs = [
+        ("max_temp_c", "monitor-temperature.png", "Temperature", "C", parse_float),
+        ("cpu_scaling_mhz_percent", "monitor-cpu-scaling.png", "CPU Frequency Scaling", "%", parse_percent),
+        ("load1", "monitor-load.png", "Load Average 1m", "load1", parse_float),
+    ]
+
+    for key, filename, title, ylabel, parser in specs:
+        fig, ax = plt.subplots(figsize=(11, 5), constrained_layout=True)
+        plotted = 0
+        for label, data in monitors.items():
+            x = elapsed_seconds(data)
+            y = [parser(row.get(key, "")) for row in data]
+            xy = [(a, b) for a, b in zip(x, y) if b is not None]
+            if not xy:
+                continue
+            xs, ys = zip(*xy)
+            ax.plot(xs, ys, marker="o", linewidth=1.5, markersize=3, label=label)
+            plotted += 1
+        if plotted == 0:
+            plt.close(fig)
+            continue
+        ax.set_title(title)
+        ax.set_xlabel("seconds since run start")
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.28)
+        ax.legend(fontsize=8)
+        out = out_dir / filename
+        fig.savefig(out, dpi=140)
+        plt.close(fig)
+        outputs.append(out)
+    return outputs
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate PNG plots for lab suite results.")
+    parser.add_argument("suite", nargs="?", default="latest", help="suite directory, summary.csv, or 'latest'")
+    args = parser.parse_args()
+
+    suite = suite_path(args.suite)
+    rows = read_summary(suite)
+    out_dir = suite / "plots"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    outputs = []
+    summary_plot = plot_summary(suite, rows, out_dir)
+    if summary_plot:
+        outputs.append(summary_plot)
+    outputs.extend(plot_monitor(collect_monitor(rows), out_dir))
+
+    if not outputs:
+        print(f"No plottable data found in {suite}", file=sys.stderr)
+        return 1
+    for output in outputs:
+        print(output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
