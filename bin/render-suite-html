@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+import csv
+import html
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+
+def read_csv(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    with path.open(newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def esc(value: object) -> str:
+    return html.escape("" if value is None else str(value))
+
+
+def table(rows: list[dict[str, str]], columns: list[str]) -> str:
+    if not rows:
+        return "<p>No data.</p>"
+    head = "".join(f"<th>{esc(col)}</th>" for col in columns)
+    body = []
+    for row in rows:
+        cells = "".join(f"<td>{esc(row.get(col, ''))}</td>" for col in columns)
+        body.append(f"<tr>{cells}</tr>")
+    return f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+
+
+def run_safety(summary_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    rows = []
+    for row in summary_rows:
+        run_dir = Path(row.get("run_dir", ""))
+        if not run_dir.exists():
+            continue
+        result = {}
+        result_path = run_dir / "result.json"
+        if result_path.exists():
+            try:
+                result = json.loads(result_path.read_text())
+            except json.JSONDecodeError:
+                result = {}
+        max_temp = ""
+        monitor = run_dir / "monitor.csv"
+        if monitor.exists():
+            temps = []
+            for sample in read_csv(monitor):
+                try:
+                    temps.append(float(sample.get("max_temp_c", "")))
+                except ValueError:
+                    pass
+            if temps:
+                max_temp = f"{max(temps):.1f}"
+        rows.append(
+            {
+                "workload": row.get("workload", ""),
+                "run": row.get("run", ""),
+                "status": result.get("status", row.get("status", "")),
+                "exit_code": result.get("exit_code", ""),
+                "timeout": result.get("timeout", ""),
+                "thermal_abort": result.get("thermal_runtime_abort", ""),
+                "max_temp_c": max_temp,
+            }
+        )
+    return rows
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("Usage: render-suite-html SUITE_DIR", file=sys.stderr)
+        return 2
+
+    suite = Path(sys.argv[1]).expanduser().resolve()
+    if not suite.is_dir():
+        print(f"Suite directory not found: {suite}", file=sys.stderr)
+        return 2
+
+    summary_rows = read_csv(suite / "summary.csv")
+    stats_rows = read_csv(suite / "stats.csv")
+    safety_rows = run_safety(summary_rows)
+
+    plots = [
+        ("Summary Metrics", "plots/summary-metrics.png"),
+        ("Temperature", "plots/monitor-temperature.png"),
+        ("CPU Frequency Scaling", "plots/monitor-cpu-scaling.png"),
+        ("Load", "plots/monitor-load.png"),
+    ]
+    plot_html = []
+    for title, rel in plots:
+        if (suite / rel).exists():
+            plot_html.append(f'<figure><img src="{esc(rel)}" alt="{esc(title)}"><figcaption>{esc(title)}</figcaption></figure>')
+
+    summary_columns = [
+        "workload",
+        "run",
+        "status",
+        "scalar_fma_mean_s",
+        "memory_walk_mean_s",
+        "sha256_mean_s",
+        "stream_triad_mb_s",
+        "openblas_gflops",
+        "sysbench_events_s",
+        "opencl_kernel_s",
+        "opencl_bandwidth_gbs",
+        "gemm_gflops",
+        "max_error",
+    ]
+    stats_columns = ["workload", "metric", "n", "mean", "median", "stddev", "cv_percent", "ci95_half_width", "quality"]
+    safety_columns = ["workload", "run", "status", "exit_code", "timeout", "thermal_abort", "max_temp_c"]
+
+    unstable = [row for row in stats_rows if row.get("quality") not in ("ok", "")]
+    status_count = {}
+    for row in safety_rows:
+        status_count[row["status"]] = status_count.get(row["status"], 0) + 1
+
+    document = f"""<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lab Suite Report - {esc(suite.name)}</title>
+  <style>
+    body {{ margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; color: #1b1f24; background: #f6f7f9; }}
+    header {{ padding: 28px 36px; background: #18202a; color: #fff; }}
+    main {{ max-width: 1180px; margin: 0 auto; padding: 28px; }}
+    section {{ margin: 0 0 28px; padding: 20px; background: #fff; border: 1px solid #d9dee7; border-radius: 8px; }}
+    h1 {{ margin: 0 0 8px; font-size: 28px; }}
+    h2 {{ margin: 0 0 16px; font-size: 20px; }}
+    p {{ line-height: 1.55; }}
+    code {{ background: #eef1f5; padding: 2px 5px; border-radius: 4px; }}
+    .meta {{ color: #d7dee8; margin: 0; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }}
+    .stat {{ padding: 14px; border: 1px solid #d9dee7; border-radius: 8px; background: #fafbfc; }}
+    .stat strong {{ display: block; font-size: 22px; margin-top: 5px; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+    th, td {{ border-bottom: 1px solid #e4e8ef; padding: 8px 9px; text-align: left; white-space: nowrap; }}
+    th {{ background: #f1f4f8; font-weight: 650; }}
+    .table-wrap {{ overflow-x: auto; }}
+    figure {{ margin: 0 0 18px; }}
+    img {{ max-width: 100%; height: auto; border: 1px solid #d9dee7; border-radius: 8px; background: #fff; }}
+    figcaption {{ margin-top: 6px; color: #5a6573; font-size: 13px; }}
+    .warn {{ color: #8a4b00; }}
+    @media (max-width: 700px) {{ header {{ padding: 22px; }} main {{ padding: 16px; }} }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lab Suite Report</h1>
+    <p class="meta">{esc(suite)}</p>
+    <p class="meta">Generated: {esc(datetime.now().isoformat(timespec="seconds"))}</p>
+  </header>
+  <main>
+    <section>
+      <h2>Overview</h2>
+      <div class="grid">
+        <div class="stat">Measured runs<strong>{len(summary_rows)}</strong></div>
+        <div class="stat">Safety statuses<strong>{esc(status_count)}</strong></div>
+        <div class="stat">Unstable metrics<strong>{len(unstable)}</strong></div>
+        <div class="stat">Suite path<strong style="font-size:13px">{esc(suite)}</strong></div>
+      </div>
+      <p class="warn">품질 플래그가 <code>unstable</code>인 지표는 반복 간 변동성이 커서, 백그라운드 부하/온도/주파수/드라이버 warm-up을 더 통제하고 다시 측정하는 것이 좋습니다.</p>
+    </section>
+    <section>
+      <h2>Plots</h2>
+      {''.join(plot_html) if plot_html else '<p>No plots found.</p>'}
+    </section>
+    <section>
+      <h2>Statistics</h2>
+      <div class="table-wrap">{table(stats_rows, stats_columns)}</div>
+    </section>
+    <section>
+      <h2>Summary</h2>
+      <div class="table-wrap">{table(summary_rows, summary_columns)}</div>
+    </section>
+    <section>
+      <h2>Safety</h2>
+      <div class="table-wrap">{table(safety_rows, safety_columns)}</div>
+    </section>
+  </main>
+</body>
+</html>
+"""
+    out = suite / "suite-report.html"
+    out.write_text(document)
+    print(out)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
