@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+ELEMENTS="${1:-${LAB_STREAM_ELEMENTS:-33554432}}"
+REPEATS="${2:-${LAB_STREAM_REPEATS:-5}}"
+BUILD_DIR="$LAB_HOME/_benchmarks/cpu"
+BIN="$BUILD_DIR/stream-triad"
+OUT="$BUILD_DIR/stream-triad-${ELEMENTS}-$(date +%Y%m%d-%H%M%S).txt"
+
+mkdir -p "$BUILD_DIR"
+gcc -O3 -march=native -fopenmp "$HOME/.config/lab/stream-triad.c" -o "$BIN"
+"$BIN" "$ELEMENTS" "$REPEATS" | tee "$OUT"
+printf '\nSaved: %s\n' "$OUT"

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+SIZE="${1:-${LAB_GEMM_SIZE:-256}}"
+SRC="$HOME/.config/lab/opencl-gemm.c"
+BUILD_DIR="$LAB_HOME/_benchmarks/opencl"
+BIN="$BUILD_DIR/opencl-gemm"
+OUT="$BUILD_DIR/opencl-gemm-${SIZE}-$(date +%Y%m%d-%H%M%S).txt"
+
+mkdir -p "$BUILD_DIR"
+
+gcc -O2 "$SRC" -lOpenCL -lm -o "$BIN"
+"$BIN" "$SIZE" | tee "$OUT"
+printf '\nSaved: %s\n' "$OUT"

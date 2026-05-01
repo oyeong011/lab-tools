@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+THREADS="${1:-${LAB_SYSBENCH_THREADS:-$(nproc)}}"
+TIME="${2:-${LAB_SYSBENCH_TIME:-10}}"
+BUILD_DIR="$LAB_HOME/_benchmarks/cpu"
+OUT="$BUILD_DIR/sysbench-cpu-t${THREADS}-${TIME}s-$(date +%Y%m%d-%H%M%S).txt"
+
+mkdir -p "$BUILD_DIR"
+{
+  printf 'Benchmark: sysbench cpu\n'
+  printf 'Threads: %s\n' "$THREADS"
+  printf 'Time: %s\n' "$TIME"
+  sysbench cpu --threads="$THREADS" --time="$TIME" run
+} | tee "$OUT"
+printf '\nSaved: %s\n' "$OUT"

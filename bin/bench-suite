@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+EXPERIMENT="${1:-cpu-ai-kernel-baseline}"
+REPEATS="${2:-${LAB_REPEATS:-3}}"
+WARMUPS="${LAB_WARMUPS:-0}"
+SUITE_DIR="$LAB_HOME/$EXPERIMENT/suites/$(date +%Y%m%d-%H%M%S-%N)-$$"
+PATH="$HOME/bin:$PATH"
+
+mkdir -p "$SUITE_DIR"
+
+{
+	  printf '# Bench Suite\n\n'
+	  printf -- '- Experiment: `%s`\n' "$EXPERIMENT"
+	  printf -- '- Warmups: `%s`\n' "$WARMUPS"
+	  printf -- '- Repeats: `%s`\n' "$REPEATS"
+	  printf -- '- Started: `%s`\n' "$(date --iso-8601=seconds)"
+} > "$SUITE_DIR/summary.md"
+
+hw-report > "$SUITE_DIR/hardware-report-path.txt"
+ai-accel-check > "$SUITE_DIR/ai-accel-check.txt"
+sensor-snapshot > "$SUITE_DIR/sensors-start.txt" || true
+
+for i in $(seq 1 "$WARMUPS"); do
+  printf 'Warmup run %s/%s\n' "$i" "$WARMUPS" | tee -a "$SUITE_DIR/summary.md"
+  lab-safe-run "$EXPERIMENT" -- bench-cpu > "$SUITE_DIR/warmup-cpu-$i.log" 2>&1 || true
+  lab-safe-run "$EXPERIMENT" -- bench-opencl > "$SUITE_DIR/warmup-opencl-$i.log" 2>&1 || true
+  lab-safe-run "$EXPERIMENT" -- bench-opencl-gemm > "$SUITE_DIR/warmup-opencl-gemm-$i.log" 2>&1 || true
+done
+
+for i in $(seq 1 "$REPEATS"); do
+  printf 'CPU run %s/%s\n' "$i" "$REPEATS" | tee -a "$SUITE_DIR/summary.md"
+  if lab-safe-run "$EXPERIMENT" -- bench-cpu > "$SUITE_DIR/cpu-run-$i.log" 2>&1; then
+    printf -- '- CPU run %s: ok\n' "$i" >> "$SUITE_DIR/summary.md"
+	  else
+	    printf -- '- CPU run %s: failed, see `cpu-run-%s.log`\n' "$i" "$i" >> "$SUITE_DIR/summary.md"
+	  fi
+
+  printf 'Standard CPU baseline run %s/%s\n' "$i" "$REPEATS" | tee -a "$SUITE_DIR/summary.md"
+  if lab-safe-run "$EXPERIMENT" -- bench-standard-cpu > "$SUITE_DIR/standard-cpu-run-$i.log" 2>&1; then
+    printf -- '- Standard CPU baseline run %s: ok\n' "$i" >> "$SUITE_DIR/summary.md"
+  else
+    printf -- '- Standard CPU baseline run %s: failed, see `standard-cpu-run-%s.log`\n' "$i" "$i" >> "$SUITE_DIR/summary.md"
+  fi
+
+  printf 'OpenCL run %s/%s\n' "$i" "$REPEATS" | tee -a "$SUITE_DIR/summary.md"
+  if lab-safe-run "$EXPERIMENT" -- bench-opencl > "$SUITE_DIR/opencl-run-$i.log" 2>&1; then
+    printf -- '- OpenCL run %s: ok\n' "$i" >> "$SUITE_DIR/summary.md"
+	  else
+	    printf -- '- OpenCL run %s: failed, see `opencl-run-%s.log`\n' "$i" "$i" >> "$SUITE_DIR/summary.md"
+	  fi
+
+  printf 'OpenCL GEMM run %s/%s\n' "$i" "$REPEATS" | tee -a "$SUITE_DIR/summary.md"
+  if lab-safe-run "$EXPERIMENT" -- bench-opencl-gemm > "$SUITE_DIR/opencl-gemm-run-$i.log" 2>&1; then
+    printf -- '- OpenCL GEMM run %s: ok\n' "$i" >> "$SUITE_DIR/summary.md"
+  else
+    printf -- '- OpenCL GEMM run %s: failed, see `opencl-gemm-run-%s.log`\n' "$i" "$i" >> "$SUITE_DIR/summary.md"
+  fi
+done
+
+sensor-snapshot > "$SUITE_DIR/sensors-end.txt" || true
+summarize-suite "$SUITE_DIR" > "$SUITE_DIR/summary-csv-path.txt"
+suite-stats "$SUITE_DIR" > "$SUITE_DIR/stats-csv-path.txt"
+render-suite-report "$SUITE_DIR" > "$SUITE_DIR/report-path.txt"
+printf -- '- Finished: `%s`\n' "$(date --iso-8601=seconds)" >> "$SUITE_DIR/summary.md"
+printf -- '- CSV: `%s`\n' "$SUITE_DIR/summary.csv" >> "$SUITE_DIR/summary.md"
+printf -- '- Stats: `%s`\n' "$SUITE_DIR/stats.csv" >> "$SUITE_DIR/summary.md"
+printf -- '- Report: `%s`\n' "$SUITE_DIR/report.md" >> "$SUITE_DIR/summary.md"
+printf 'Suite complete: %s\n' "$SUITE_DIR"

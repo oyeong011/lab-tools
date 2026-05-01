@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+OUT_DIR="$LAB_HOME/_hardware"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+OUT="$OUT_DIR/hardware-$STAMP.md"
+
+mkdir -p "$OUT_DIR"
+
+section() {
+  printf '\n## %s\n\n' "$1" >> "$OUT"
+}
+
+run() {
+  local title="$1"
+  shift
+  section "$title"
+  {
+    printf '```text\n'
+    "$@" 2>&1 || true
+    printf '```\n'
+  } >> "$OUT"
+}
+
+{
+  printf '# Hardware Report %s\n\n' "$STAMP"
+  printf -- '- Host: `%s`\n' "$(hostname)"
+  printf -- '- Kernel: `%s`\n' "$(uname -r)"
+  printf -- '- Lab home: `%s`\n' "$LAB_HOME"
+} > "$OUT"
+
+run "CPU" lscpu
+run "Memory" free -h
+run "Disk" df -h / /home /tmp
+run "PCI Devices" lspci -nn
+run "USB Devices" lsusb
+run "DRM Devices" ls -la /dev/dri
+run "Accelerator Device Nodes" sh -c 'ls -la /dev/kfd /dev/nvidia* /dev/apex_* /dev/accel 2>/dev/null'
+run "Kernel Modules" sh -c "lsmod | grep -E 'i915|nvidia|amdgpu|kfd|vfio|kvm|drm|apex' || true"
+run "Available Runtime Commands" sh -c 'command -v nvidia-smi rocminfo rocm-smi clinfo vainfo sycl-ls python3 node npm uv perf numactl 2>/dev/null'
+run "Groups" groups "$USER"
+
+printf '%s\n' "$OUT"

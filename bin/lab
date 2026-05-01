@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab                 Show experiments
+  lab new NAME        Create a CPU/accelerator experiment workspace
+  lab go NAME         Open or attach tmux session for an experiment
+  lab list            List experiments
+  lab report          Save a hardware report under ~/lab/_hardware
+
+Examples:
+  lab new cpu-kernel-test
+  lab go cpu-kernel-test
+EOF
+}
+
+slugify() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//'
+}
+
+ensure_lab_home() {
+  mkdir -p "$LAB_HOME"
+}
+
+list_labs() {
+  ensure_lab_home
+  find "$LAB_HOME" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+}
+
+new_lab() {
+  if [ $# -lt 1 ]; then
+    printf 'lab new needs a name.\n' >&2
+    exit 2
+  fi
+
+  local name path
+  name="$(slugify "$1")"
+  if [ -z "$name" ]; then
+    printf 'Invalid lab name: %s\n' "$1" >&2
+    exit 2
+  fi
+
+  path="$LAB_HOME/$name"
+  mkdir -p "$path"/{src,data,notes,tmp,env,logs,results,benchmarks}
+
+  if [ ! -f "$path/README.md" ]; then
+    {
+      printf '# %s\n\n' "$name"
+      printf '## Goal\n\n'
+      printf '## Hardware Target\n\n'
+      printf -- '- CPU:\n'
+      printf -- '- Accelerator:\n'
+      printf -- '- Driver/runtime:\n\n'
+      printf '## Baseline\n\n'
+      printf -- '- Run `hw-report`\n'
+      printf -- '- Run `bench-cpu`\n\n'
+      printf '## Notes\n\n'
+      printf '## Commands\n\n'
+      printf '## Results\n\n'
+    } > "$path/README.md"
+  fi
+
+  printf '%s\n' "$path"
+}
+
+go_lab() {
+  if [ $# -lt 1 ]; then
+    printf 'lab go needs a name.\n' >&2
+    exit 2
+  fi
+
+  local name path session
+  name="$(slugify "$1")"
+  path="$LAB_HOME/$name"
+  session="lab-$name"
+
+  if [ ! -d "$path" ]; then
+    new_lab "$name" >/dev/null
+  fi
+
+  if [ -n "${TMUX:-}" ]; then
+    tmux new-session -d -s "$session" -c "$path" 2>/dev/null || true
+    tmux switch-client -t "$session"
+  else
+    tmux new-session -A -s "$session" -c "$path"
+  fi
+}
+
+case "${1:-list}" in
+  list)
+    list_labs
+    ;;
+  new)
+    shift
+    new_lab "$@"
+    ;;
+  go)
+    shift
+    go_lab "$@"
+    ;;
+  report)
+    hw-report
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

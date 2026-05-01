@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO="$HOME/lab-tools"
+mkdir -p "$REPO"/{bin,config,notes}
+
+copy_file() {
+  local src="$1"
+  local dst="$2"
+  if [ -f "$src" ]; then
+    mkdir -p "$(dirname "$dst")"
+    cp -p "$src" "$dst"
+  fi
+}
+
+for file in \
+  ai-accel-check bench-cpu bench-openblas bench-opencl bench-opencl-gemm \
+  bench-standard-cpu bench-stream bench-suite bench-suite-config bench-sysbench \
+  hw-report lab lab-doctor lab-manifest lab-safe-run lab-tools-sync monitor-run \
+  nvidia-check render-suite-report sensor-snapshot suite-stats summarize-suite thermal-check
+do
+  copy_file "$HOME/bin/$file" "$REPO/bin/$file"
+done
+
+for file in "$HOME"/.config/lab/*.c; do
+  [ -e "$file" ] || continue
+  copy_file "$file" "$REPO/config/$(basename "$file")"
+done
+
+mkdir -p "$REPO/config/suites" "$REPO/config/templates"
+for file in "$HOME"/.config/lab/suites/*.env; do
+  [ -e "$file" ] || continue
+  copy_file "$file" "$REPO/config/suites/$(basename "$file")"
+done
+for file in "$HOME"/.config/lab/templates/*; do
+  [ -e "$file" ] || continue
+  copy_file "$file" "$REPO/config/templates/$(basename "$file")"
+done
+
+copy_file "$HOME/notes/ubuntu-lab-profile.md" "$REPO/notes/ubuntu-lab-profile.md"
+copy_file "$HOME/notes/ubuntu-lab-guide.html" "$REPO/notes/ubuntu-lab-guide.html"
+
+cat > "$REPO/README.md" <<'EOF'
+# lab-tools
+
+Local CPU / accelerator experiment tooling for this Ubuntu machine.
+
+## Install Back Into Home
+
+This repository is a tracked copy of the active files. The active files live in:
+
+- `~/bin`
+- `~/.config/lab`
+- `~/notes`
+
+Use `lab-tools-sync` from the active environment to refresh this repo after edits.
+
+## Common Commands
+
+```bash
+lab-doctor
+bench-suite-config quick
+bench-suite-config baseline
+```
+
+## Safety
+
+Runs should go through `lab-safe-run`, `monitor-run`, or `bench-suite`.
+Each run records `manifest.json`, `result.json`, `monitor.csv`, sensor snapshots, stdout, and stderr.
+EOF
+
+cat > "$REPO/.gitignore" <<'EOF'
+__pycache__/
+*.pyc
+*.o
+*.out
+_benchmarks/
+_hardware/
+runs/
+suites/
+EOF
+
+if [ ! -d "$REPO/.git" ]; then
+  git -C "$REPO" init
+fi
+
+git -C "$REPO" add README.md .gitignore bin config notes
+if git -C "$REPO" diff --cached --quiet; then
+  printf 'lab-tools already up to date: %s\n' "$REPO"
+else
+  git -C "$REPO" commit -m "Update lab experiment tooling"
+fi
+
+git -C "$REPO" status --short
+printf 'Synced lab tools repo: %s\n' "$REPO"

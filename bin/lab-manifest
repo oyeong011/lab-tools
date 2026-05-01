@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+import hashlib
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def run(cmd):
+    try:
+        p = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
+        return {"cmd": cmd, "exit_code": p.returncode, "output": p.stdout.strip()}
+    except Exception as exc:
+        return {"cmd": cmd, "exit_code": -1, "output": str(exc)}
+
+
+def sha256(path):
+    p = Path(path)
+    if not p.exists():
+        return None
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def command_path(name):
+    return shutil.which(name)
+
+
+def main():
+    if len(sys.argv) < 5:
+        print("Usage: lab-manifest RUN_DIR EXPERIMENT WORKDIR -- COMMAND...", file=sys.stderr)
+        return 2
+    run_dir = Path(sys.argv[1])
+    experiment = sys.argv[2]
+    workdir = sys.argv[3]
+    if sys.argv[4] != "--":
+        print("missing --", file=sys.stderr)
+        return 2
+    command = sys.argv[5:]
+
+    bin_dir = Path.home() / "bin"
+    config_dir = Path.home() / ".config" / "lab"
+    tracked = [
+        bin_dir / "lab-safe-run",
+        bin_dir / "bench-suite",
+        bin_dir / "bench-suite-config",
+        bin_dir / "bench-cpu",
+        bin_dir / "bench-opencl",
+        bin_dir / "bench-opencl-gemm",
+        bin_dir / "bench-stream",
+        bin_dir / "bench-openblas",
+        bin_dir / "bench-sysbench",
+        bin_dir / "bench-standard-cpu",
+        bin_dir / "summarize-suite",
+        bin_dir / "lab-tools-sync",
+        config_dir / "opencl-vector-add.c",
+        config_dir / "opencl-gemm.c",
+        config_dir / "stream-triad.c",
+        config_dir / "openblas-gemm.c",
+        config_dir / "suites" / "quick.env",
+        config_dir / "suites" / "baseline.env",
+    ]
+
+    manifest = {
+        "schema_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "host": platform.node(),
+        "experiment": experiment,
+        "workdir": workdir,
+        "run_dir": str(run_dir),
+        "command": command,
+        "environment": {
+            k: os.environ.get(k)
+            for k in [
+                "LAB_TIMEOUT",
+                "LAB_CPUSET",
+                "LAB_MAX_TEMP_C",
+                "LAB_MONITOR_INTERVAL",
+                "LAB_GEMM_SIZE",
+                "LAB_WARMUPS",
+                "LAB_REPEATS",
+                "LAB_STREAM_ELEMENTS",
+                "LAB_STREAM_REPEATS",
+                "LAB_OPENBLAS_SIZE",
+                "LAB_OPENBLAS_REPEATS",
+                "LAB_SYSBENCH_THREADS",
+                "LAB_SYSBENCH_TIME",
+                "EXPERIMENT",
+                "OPENBLAS_NUM_THREADS",
+                "OMP_NUM_THREADS",
+                "OPENCL_PLATFORM_INDEX",
+                "OPENCL_DEVICE_INDEX",
+                "CUDA_VISIBLE_DEVICES",
+            ]
+            if os.environ.get(k) is not None
+        },
+        "system": {
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "uname": run(["uname", "-a"]),
+            "cmdline": Path("/proc/cmdline").read_text(errors="replace").strip() if Path("/proc/cmdline").exists() else "",
+            "lscpu": run(["lscpu"]),
+            "governors": run(["sh", "-c", "cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null | sort -u"]),
+            "smt": run(["sh", "-c", "cat /sys/devices/system/cpu/smt/active 2>/dev/null || true"]),
+            "turbo": run(["sh", "-c", "cat /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true"]),
+        },
+        "accelerators": {
+            "opencl": run(["sh", "-c", "clinfo 2>/dev/null | sed -n '1,80p'"]),
+            "nvidia": run(["sh", "-c", "command -v nvidia-smi >/dev/null && nvidia-smi || true"]),
+            "pci": run(["lspci", "-nn"]),
+        },
+        "tool_versions": {
+            name: run([path, "--version"]) if path and name in ["gcc", "python3"] else {"path": path}
+            for name, path in {
+                "gcc": command_path("gcc"),
+                "python3": command_path("python3"),
+                "clinfo": command_path("clinfo"),
+                "nvidia-smi": command_path("nvidia-smi"),
+                "nvcc": command_path("nvcc"),
+                "sysbench": command_path("sysbench"),
+            }.items()
+        },
+        "apt_packages": run(["sh", "-c", "dpkg-query -W -f='${Package}=${Version}\\n' clinfo intel-opencl-icd ocl-icd-opencl-dev opencl-headers intel-gpu-tools lm-sensors sysstat gcc python3 sysbench libopenblas-dev 2>/dev/null"]),
+        "file_sha256": {str(p): sha256(p) for p in tracked},
+    }
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

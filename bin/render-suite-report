@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+suite_dir="${1:-}"
+if [ -z "$suite_dir" ] || [ ! -d "$suite_dir" ]; then
+  printf 'Usage: render-suite-report SUITE_DIR\n' >&2
+  exit 2
+fi
+
+csv="$suite_dir/summary.csv"
+if [ ! -f "$csv" ]; then
+  summarize-suite "$suite_dir" >/dev/null
+fi
+
+report="$suite_dir/report.md"
+{
+  printf '# Suite Report\n\n'
+  printf -- '- Suite: `%s`\n' "$suite_dir"
+  printf -- '- Generated: `%s`\n\n' "$(date --iso-8601=seconds)"
+  printf '## Results\n\n'
+  printf '| Workload | Run | Status | Scalar s | Memory s | SHA s | STREAM MB/s | OpenBLAS GF/s | sysbench ev/s | OpenCL s | OpenCL GB/s | GEMM GF/s | Error |\n'
+  printf '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n'
+  tail -n +2 "$csv" | while IFS=, read -r workload run status scalar memory sha stream openblas sysbench opencl_kernel opencl_bandwidth gemm_gflops max_error run_dir; do
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+      "$workload" "$run" "$status" "$scalar" "$memory" "$sha" "$stream" "$openblas" "$sysbench" "$opencl_kernel" "$opencl_bandwidth" "$gemm_gflops" "$max_error"
+  done
+  printf '\n## Run Directories\n\n'
+  tail -n +2 "$csv" | while IFS=, read -r workload run status scalar memory sha stream openblas sysbench opencl_kernel opencl_bandwidth gemm_gflops max_error run_dir; do
+    printf -- '- %s run %s: `%s`\n' "$workload" "$run" "$run_dir"
+  done
+  if [ -f "$suite_dir/stats.csv" ]; then
+    printf '\n## Statistics\n\n'
+    printf '| Workload | Metric | N | Mean | Median | Stddev | CV %% | Quality |\n'
+    printf '| --- | --- | --- | --- | --- | --- | --- | --- |\n'
+    tail -n +2 "$suite_dir/stats.csv" | tr -d '\r' | while IFS=, read -r workload metric n mean median min max stddev cv ci quality; do
+      printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' "$workload" "$metric" "$n" "$mean" "$median" "$stddev" "$cv" "$quality"
+    done
+  fi
+} > "$report"
+
+printf '%s\n' "$report"

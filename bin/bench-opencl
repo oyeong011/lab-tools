@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+SRC="$HOME/.config/lab/opencl-vector-add.c"
+BUILD_DIR="$LAB_HOME/_benchmarks/opencl"
+BIN="$BUILD_DIR/opencl-vector-add"
+OUT="$BUILD_DIR/opencl-vector-add-$(date +%Y%m%d-%H%M%S).txt"
+
+mkdir -p "$BUILD_DIR"
+
+gcc -O2 "$SRC" -lOpenCL -lm -o "$BIN"
+"$BIN" | tee "$OUT"
+printf '\nSaved: %s\n' "$OUT"

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf 'timestamp=%s\n' "$(date --iso-8601=seconds)"
+printf '\n== sensors ==\n'
+if command -v sensors >/dev/null 2>&1; then
+  sensors || true
+else
+  printf 'sensors command not installed.\n'
+fi
+
+printf '\n== thermal sysfs ==\n'
+for zone in /sys/class/thermal/thermal_zone*; do
+  [ -e "$zone" ] || continue
+  type="$(cat "$zone/type" 2>/dev/null || printf unknown)"
+  temp_raw="$(cat "$zone/temp" 2>/dev/null || true)"
+  if [ -n "$temp_raw" ]; then
+    awk -v type="$type" -v raw="$temp_raw" 'BEGIN { printf "%s %.1f C\n", type, raw / 1000 }'
+  fi
+done
+
+printf '\n== cpu frequency ==\n'
+lscpu | grep -E 'CPU\(s\) scaling MHz|CPU max MHz|CPU min MHz|Model name' || true
+
+printf '\n== load ==\n'
+uptime || true
+
+printf '\n== memory ==\n'
+free -h || true

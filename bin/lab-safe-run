@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+TIMEOUT="${LAB_TIMEOUT:-10m}"
+CPUSET="${LAB_CPUSET:-}"
+MAX_TEMP_C="${LAB_MAX_TEMP_C:-85}"
+MONITOR_INTERVAL="${LAB_MONITOR_INTERVAL:-2}"
+PATH="$HOME/bin:$PATH"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-safe-run EXPERIMENT -- COMMAND [ARGS...]
+
+Environment:
+  LAB_TIMEOUT=10m       Max runtime before timeout stops the command
+  LAB_CPUSET=0-3        Optional CPU affinity passed to taskset
+  LAB_MAX_TEMP_C=85     Refuse to start if current temperature is too high
+  LAB_MONITOR_INTERVAL=2  Seconds between monitor.csv samples
+
+Example:
+  lab-safe-run cpu-ai-kernel-baseline -- bench-opencl
+EOF
+}
+
+if [ $# -lt 3 ] || [ "$2" != "--" ]; then
+  usage >&2
+  exit 2
+fi
+
+experiment="$1"
+shift 2
+
+case "$experiment" in
+  *[!A-Za-z0-9._-]*|'')
+    printf 'Invalid experiment name: %s\n' "$experiment" >&2
+    exit 2
+    ;;
+esac
+
+workdir="$LAB_HOME/$experiment"
+run_id="$(date +%Y%m%d-%H%M%S-%N)-$$"
+run_dir="$workdir/runs/$run_id"
+
+if [ ! -d "$workdir" ]; then
+  printf 'Experiment does not exist: %s\n' "$workdir" >&2
+  printf 'Create it first with: lab new %s\n' "$experiment" >&2
+  exit 2
+fi
+
+mkdir -p "$run_dir"
+started_at="$(date --iso-8601=seconds)"
+
+{
+  printf 'run_id=%s\n' "$run_id"
+  printf 'experiment=%s\n' "$experiment"
+  printf 'workdir=%s\n' "$workdir"
+	  printf 'timeout=%s\n' "$TIMEOUT"
+	  printf 'cpuset=%s\n' "${CPUSET:-all}"
+	  printf 'max_temp_c=%s\n' "$MAX_TEMP_C"
+	  printf 'monitor_interval=%s\n' "$MONITOR_INTERVAL"
+	  printf 'command='
+  printf '%q ' "$@"
+  printf '\n'
+} > "$run_dir/meta.txt"
+lab-manifest "$run_dir" "$experiment" "$workdir" -- "$@" >/dev/null 2>&1 || true
+
+sensor-snapshot > "$run_dir/sensors-before.txt" 2>&1 || true
+if ! thermal-check "$MAX_TEMP_C" > "$run_dir/thermal-before.txt" 2>&1; then
+  printf 'Thermal guard refused to start. See: %s\n' "$run_dir/thermal-before.txt" >&2
+  printf '99\n' > "$run_dir/status.txt"
+  printf 'thermal_precheck\n' > "$run_dir/failure-reason.txt"
+  python3 - "$run_dir" "$started_at" "$(date --iso-8601=seconds)" 99 thermal_precheck <<'PY'
+import json, sys
+run_dir, started, ended, status, reason = sys.argv[1:]
+open(f"{run_dir}/result.json", "w").write(json.dumps({
+  "started_at": started, "ended_at": ended, "exit_code": int(status),
+  "status": "failed", "failure_reason": reason
+}, indent=2) + "\n")
+PY
+  exit 99
+fi
+
+cmd=(timeout --preserve-status "$TIMEOUT" nice -n 10 ionice -c 2 -n 7)
+if [ -n "$CPUSET" ]; then
+  cmd+=(taskset -c "$CPUSET")
+fi
+cmd+=("$@")
+
+sample_monitor() {
+  local timestamp max_temp cpu_scaling load1 mem_available_kib
+  timestamp="$(date --iso-8601=seconds)"
+  max_temp="$(thermal-check 999 2>/dev/null | sed -n 's/^max_temp_c=\([^ ]*\).*/\1/p' || true)"
+  cpu_scaling="$(lscpu 2>/dev/null | sed -n 's/^CPU(s) scaling MHz:[[:space:]]*//p' | head -n 1)"
+  load1="$(awk '{print $1}' /proc/loadavg 2>/dev/null || true)"
+  mem_available_kib="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || true)"
+  printf '%s,%s,%s,%s,%s\n' "$timestamp" "${max_temp:-}" "${cpu_scaling:-}" "${load1:-}" "${mem_available_kib:-}"
+}
+
+monitor_loop() {
+  local pid="$1"
+  local temp
+  printf 'timestamp,max_temp_c,cpu_scaling_mhz_percent,load1,mem_available_kib\n' > "$run_dir/monitor.csv"
+  while kill -0 "$pid" 2>/dev/null; do
+    sample_monitor >> "$run_dir/monitor.csv"
+    temp="$(tail -n 1 "$run_dir/monitor.csv" | awk -F, '{print $2}')"
+    if [ -n "$temp" ] && ! awk -v temp="$temp" -v max="$MAX_TEMP_C" 'BEGIN { exit (temp >= max ? 0 : 1) }'; then
+      :
+    elif [ -n "$temp" ]; then
+      printf 'thermal_runtime\n' > "$run_dir/failure-reason.txt"
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 2
+      kill -KILL "$pid" 2>/dev/null || true
+      break
+    fi
+    sleep "$MONITOR_INTERVAL"
+  done
+  sample_monitor >> "$run_dir/monitor.csv"
+}
+
+status=0
+(
+  cd "$workdir"
+  "${cmd[@]}"
+) > >(tee "$run_dir/stdout.log") 2> >(tee "$run_dir/stderr.log" >&2) &
+cmd_pid=$!
+monitor_loop "$cmd_pid" &
+monitor_pid=$!
+wait "$cmd_pid" || status=$?
+wait "$monitor_pid" 2>/dev/null || true
+if [ -f "$run_dir/failure-reason.txt" ] && grep -q '^thermal_runtime$' "$run_dir/failure-reason.txt"; then
+  status=98
+fi
+
+sensor-snapshot > "$run_dir/sensors-after.txt" 2>&1 || true
+thermal-check "$MAX_TEMP_C" > "$run_dir/thermal-after.txt" 2>&1 || true
+printf '%s\n' "$status" > "$run_dir/status.txt"
+ended_at="$(date --iso-8601=seconds)"
+reason="none"
+if [ "$status" -eq 124 ]; then
+  reason="timeout"
+elif [ "$status" -eq 98 ]; then
+  reason="thermal_runtime"
+elif [ "$status" -ne 0 ]; then
+  reason="command_failed"
+fi
+if [ -f "$run_dir/failure-reason.txt" ]; then
+  reason="$(cat "$run_dir/failure-reason.txt")"
+else
+  printf '%s\n' "$reason" > "$run_dir/failure-reason.txt"
+fi
+python3 - "$run_dir" "$started_at" "$ended_at" "$status" "$reason" <<'PY'
+import json, sys
+run_dir, started, ended, status, reason = sys.argv[1:]
+code = int(status)
+open(f"{run_dir}/result.json", "w").write(json.dumps({
+  "started_at": started,
+  "ended_at": ended,
+  "exit_code": code,
+  "status": "ok" if code == 0 else "failed",
+  "failure_reason": reason,
+  "timeout": code == 124,
+  "thermal_runtime_abort": code == 98,
+}, indent=2, sort_keys=True) + "\n")
+PY
+
+if [ "$status" -eq 0 ]; then
+  printf 'Run complete: %s\n' "$run_dir"
+else
+  printf 'Run failed with status %s: %s\n' "$status" "$run_dir" >&2
+fi
+
+exit "$status"

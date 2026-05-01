@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+OUT_DIR="$LAB_HOME/_benchmarks/cpu"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+OUT="$OUT_DIR/cpu-bench-$STAMP.txt"
+
+mkdir -p "$OUT_DIR"
+
+{
+  printf 'CPU benchmark: %s\n' "$STAMP"
+  printf 'Host: %s\n' "$(hostname)"
+  printf 'Kernel: %s\n\n' "$(uname -r)"
+  lscpu | sed -n '1,25p'
+  printf '\n--- Python CPU kernels ---\n'
+  python3 - <<'PY'
+import hashlib
+import math
+import os
+import statistics
+import time
+
+def bench(name, func, rounds=5):
+    samples = []
+    for _ in range(rounds):
+        t0 = time.perf_counter()
+        value = func()
+        samples.append(time.perf_counter() - t0)
+    print(f"{name}: min={min(samples):.4f}s mean={statistics.mean(samples):.4f}s value={value}")
+
+def scalar_fma():
+    x = 0.5
+    for i in range(6_000_000):
+        x = math.sin(x + i * 1e-9) * 1.0000001 + 0.9999999
+    return f"{x:.6f}"
+
+def memory_walk():
+    size = 32 * 1024 * 1024
+    data = bytearray(os.urandom(size))
+    total = 0
+    for i in range(0, size, 64):
+        total ^= data[i]
+    return total
+
+def sha256_stream():
+    block = b"x" * (1024 * 1024)
+    h = hashlib.sha256()
+    for _ in range(512):
+        h.update(block)
+    return h.hexdigest()[:16]
+
+bench("scalar_fma", scalar_fma, rounds=3)
+bench("memory_walk_32m", memory_walk, rounds=5)
+bench("sha256_512m", sha256_stream, rounds=3)
+PY
+} | tee "$OUT"
+
+printf '\nSaved: %s\n' "$OUT"

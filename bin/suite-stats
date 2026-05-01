@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+import csv
+import math
+import statistics
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+
+def to_float(value):
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: suite-stats SUITE_DIR", file=sys.stderr)
+        return 2
+    suite = Path(sys.argv[1])
+    src = suite / "summary.csv"
+    if not src.exists():
+        print(f"summary.csv not found: {src}", file=sys.stderr)
+        return 2
+
+    rows = list(csv.DictReader(src.open()))
+    metrics = [
+        "scalar_fma_mean_s",
+        "memory_walk_mean_s",
+        "sha256_mean_s",
+        "stream_triad_mb_s",
+        "openblas_gflops",
+        "sysbench_events_s",
+        "opencl_kernel_s",
+        "opencl_bandwidth_gbs",
+        "gemm_gflops",
+    ]
+    grouped = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        workload = row.get("workload", "")
+        if row.get("status") != "ok":
+            continue
+        for metric in metrics:
+            value = to_float(row.get(metric, ""))
+            if value is not None:
+                grouped[workload][metric].append(value)
+
+    out = suite / "stats.csv"
+    with out.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["workload", "metric", "n", "mean", "median", "min", "max", "stddev", "cv_percent", "ci95_half_width", "quality"])
+        for workload in sorted(grouped):
+            for metric in sorted(grouped[workload]):
+                values = grouped[workload][metric]
+                n = len(values)
+                mean = statistics.fmean(values)
+                median = statistics.median(values)
+                stdev = statistics.stdev(values) if n > 1 else 0.0
+                cv = (stdev / mean * 100.0) if mean else 0.0
+                ci95 = 1.96 * stdev / math.sqrt(n) if n > 1 else 0.0
+                quality = "ok"
+                if n < 3:
+                    quality = "low_n"
+                elif cv > 5.0:
+                    quality = "unstable"
+                writer.writerow([workload, metric, n, f"{mean:.6g}", f"{median:.6g}", f"{min(values):.6g}", f"{max(values):.6g}", f"{stdev:.6g}", f"{cv:.3f}", f"{ci95:.6g}", quality])
+    print(out)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

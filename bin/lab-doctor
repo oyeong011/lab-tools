@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+PATH="$HOME/bin:$PATH"
+
+ok=0
+warn=0
+
+check_cmd() {
+  if command -v "$1" >/dev/null 2>&1; then
+    printf 'ok   command %-18s %s\n' "$1" "$(command -v "$1")"
+  else
+    printf 'warn command %-18s missing\n' "$1"
+    warn=$((warn + 1))
+  fi
+}
+
+info_cmd() {
+  if command -v "$1" >/dev/null 2>&1; then
+    printf 'ok   command %-18s %s\n' "$1" "$(command -v "$1")"
+  else
+    printf 'info command %-18s missing\n' "$1"
+  fi
+}
+
+check_file() {
+  if [ -e "$1" ]; then
+    printf 'ok   file    %s\n' "$1"
+  else
+    printf 'warn file    %s missing\n' "$1"
+    warn=$((warn + 1))
+  fi
+}
+
+printf '== Lab Doctor ==\n'
+printf 'time=%s\n' "$(date --iso-8601=seconds)"
+printf 'host=%s\n\n' "$(hostname)"
+
+printf '== Required commands ==\n'
+for cmd in lab-safe-run bench-suite bench-suite-config summarize-suite suite-stats render-suite-report lab-manifest lab-tools-sync thermal-check sensor-snapshot bench-stream bench-openblas bench-sysbench bench-standard-cpu clinfo gcc python3 sysbench git; do
+  check_cmd "$cmd"
+done
+
+printf '\n== Optional/future commands ==\n'
+for cmd in nvidia-smi nvcc sycl-ls ze_info rocminfo rocm-smi; do
+  info_cmd "$cmd"
+done
+
+printf '\n== Required files ==\n'
+check_file "$HOME/.config/lab/opencl-vector-add.c"
+check_file "$HOME/.config/lab/opencl-gemm.c"
+check_file "$HOME/.config/lab/stream-triad.c"
+check_file "$HOME/.config/lab/openblas-gemm.c"
+check_file "$HOME/.config/lab/suites/quick.env"
+check_file "$HOME/.config/lab/suites/baseline.env"
+check_file "$HOME/notes/ubuntu-lab-profile.md"
+check_file "$HOME/notes/ubuntu-lab-guide.html"
+
+printf '\n== Temperature ==\n'
+if thermal-check; then
+  :
+else
+  printf 'warn thermal-check failed\n'
+  warn=$((warn + 1))
+fi
+
+printf '\n== OpenCL quick check ==\n'
+clinfo_out="$(clinfo 2>/dev/null || true)"
+if printf '%s\n' "$clinfo_out" | grep -q 'Device Name'; then
+  printf '%s\n' "$clinfo_out" | sed -n 's/^[[:space:]]*Device Name[[:space:]]*//p' | head -n 3
+else
+  printf 'warn no OpenCL device detected\n'
+  warn=$((warn + 1))
+fi
+
+printf '\n== Summary ==\n'
+if [ "$warn" -eq 0 ]; then
+  printf 'status=ok warnings=0\n'
+else
+  printf 'status=warn warnings=%s\n' "$warn"
+fi
+
+exit 0

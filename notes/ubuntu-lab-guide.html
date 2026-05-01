@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ubuntu CPU / AI Accelerator Lab Guide</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --fg: #1f2933;
+      --muted: #5d6875;
+      --line: #d7dde5;
+      --panel: #ffffff;
+      --accent: #136f63;
+      --accent-soft: #e3f2ef;
+      --warn: #8a5a00;
+      --warn-soft: #fff3cf;
+      --code: #111827;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      padding: 28px 20px 20px;
+    }
+
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 24px 20px 56px;
+    }
+
+    h1 {
+      max-width: 1040px;
+      margin: 0 auto 8px;
+      font-size: 28px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 1040px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    section {
+      margin-top: 18px;
+      padding: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 19px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 8px 0;
+    }
+
+    ul {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    code {
+      padding: 2px 5px;
+      background: #eef1f5;
+      border-radius: 5px;
+      color: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      margin: 10px 0 0;
+      padding: 14px;
+      background: #111827;
+      color: #f9fafb;
+      border-radius: 7px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef1f5;
+    }
+
+    .ok {
+      border-left: 5px solid var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .warn {
+      border-left: 5px solid var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+
+    .mini {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .mini h3 {
+      margin-top: 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ubuntu CPU / AI Accelerator 실험 환경 가이드</h1>
+    <p class="subtitle">작성 위치: <code>/home/oy/notes/ubuntu-lab-guide.html</code></p>
+  </header>
+
+  <main>
+    <section class="ok">
+      <h2>안정성 결론</h2>
+      <p>현재 구성은 안정성을 우선한 실험 환경입니다. Ubuntu 공식 저장소 패키지 중심으로 설치했고, 커널 파라미터 변경, 오버클럭, 외부 드라이버 저장소, 위험한 전원 튜닝은 하지 않았습니다.</p>
+      <p>실험 실행은 기본적으로 낮은 CPU/I/O 우선순위, timeout, 온도 사전 점검, 실행 전후 센서 기록, 실행 중 모니터링 CSV를 사용하도록 구성했습니다.</p>
+    </section>
+
+    <section>
+      <h2>현재 하드웨어와 가속기 상태</h2>
+      <table>
+        <tr><th>항목</th><th>상태</th></tr>
+        <tr><td>CPU</td><td>Intel Core i7-7700, 4코어 / 8스레드, AVX2 지원</td></tr>
+        <tr><td>GPU / Accelerator</td><td>Intel HD Graphics 630</td></tr>
+        <tr><td>OpenCL</td><td>Intel OpenCL Graphics 런타임 설치 및 장치 인식 확인</td></tr>
+        <tr><td>OpenCL 실제 커널 실행</td><td>벡터 덧셈 커널 실행 성공, Max error 0</td></tr>
+        <tr><td>Level Zero</td><td>loader 설치 확인</td></tr>
+        <tr><td>NVIDIA / ROCm / Coral TPU</td><td>현재 장치 감지 안 됨. NVIDIA 장착 후 <code>nvidia-check</code>와 <code>ai-accel-check</code>로 검증하도록 준비됨</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>지금까지 한 작업</h2>
+      <div class="grid">
+        <div class="mini">
+          <h3>tmux 개선</h3>
+          <ul>
+            <li><code>Ctrl-a</code>를 tmux prefix로 설정</li>
+            <li><code>Ctrl-Left/Right</code>로 session 이동</li>
+            <li><code>Ctrl-Up</code>으로 새 session 생성</li>
+            <li><code>Ctrl-Down</code>으로 session 목록 열기</li>
+            <li>마우스 클릭/드래그/스크롤 지원</li>
+          </ul>
+        </div>
+
+        <div class="mini">
+          <h3>실험 디렉터리</h3>
+          <ul>
+            <li><code>~/lab</code>: 실험 작업공간</li>
+            <li><code>~/lab/_hardware</code>: 하드웨어 리포트</li>
+            <li><code>~/lab/_benchmarks</code>: 기준 벤치마크</li>
+            <li><code>~/src</code>: 소스 코드</li>
+            <li><code>~/bin</code>: 개인 명령어</li>
+            <li><code>~/notes</code>: 문서</li>
+          </ul>
+        </div>
+
+        <div class="mini">
+          <h3>OpenCL 환경</h3>
+          <ul>
+            <li><code>clinfo</code> 설치</li>
+            <li><code>intel-opencl-icd</code> 설치</li>
+            <li><code>intel-gpu-tools</code> 설치</li>
+            <li><code>opencl-headers</code> 설치</li>
+            <li><code>ocl-icd-opencl-dev</code> 설치</li>
+            <li><code>oy</code> 사용자를 <code>render</code>, <code>video</code> 그룹에 추가</li>
+          </ul>
+        </div>
+
+        <div class="mini">
+          <h3>안전 실행</h3>
+          <ul>
+            <li>실행 전 온도 점검</li>
+            <li>기본 timeout 10분</li>
+            <li>낮은 CPU/I/O 우선순위</li>
+            <li>실행 전후 센서 기록</li>
+            <li>실행 중 <code>monitor.csv</code> 기록</li>
+            <li>suite 결과 <code>summary.csv</code>와 <code>report.md</code> 자동 생성</li>
+            <li>OpenCL GEMM 행렬곱 벤치 추가</li>
+            <li>NVIDIA GPU 장착 후 점검용 <code>nvidia-check</code> 추가</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>주요 명령어</h2>
+      <table>
+        <tr><th>명령</th><th>용도</th></tr>
+        <tr><td><code>lab list</code></td><td>실험 목록 보기</td></tr>
+        <tr><td><code>lab new NAME</code></td><td>새 실험 폴더 생성</td></tr>
+        <tr><td><code>lab go NAME</code></td><td>tmux session으로 실험 진입</td></tr>
+        <tr><td><code>hw-report</code></td><td>하드웨어 리포트 저장</td></tr>
+        <tr><td><code>ai-accel-check</code></td><td>CPU/GPU/OpenCL/Level Zero 상태 확인</td></tr>
+        <tr><td><code>bench-cpu</code></td><td>CPU 기준 벤치마크 실행</td></tr>
+        <tr><td><code>bench-stream</code></td><td>STREAM-style 메모리 대역폭 기준 측정</td></tr>
+        <tr><td><code>bench-openblas</code></td><td>OpenBLAS DGEMM CPU 기준 측정</td></tr>
+        <tr><td><code>bench-sysbench</code></td><td>sysbench CPU 기준 측정</td></tr>
+        <tr><td><code>bench-standard-cpu</code></td><td>STREAM, OpenBLAS, sysbench를 묶어서 실행</td></tr>
+        <tr><td><code>bench-opencl</code></td><td>OpenCL 벡터 덧셈 커널 컴파일 및 실행</td></tr>
+        <tr><td><code>bench-opencl-gemm</code></td><td>OpenCL 행렬곱 GEMM 벤치 실행</td></tr>
+        <tr><td><code>nvidia-check</code></td><td>NVIDIA GPU, 드라이버, <code>nvidia-smi</code>, CUDA compiler 상태 확인</td></tr>
+        <tr><td><code>sensor-snapshot</code></td><td>온도, CPU 주파수, load, memory 기록</td></tr>
+        <tr><td><code>thermal-check</code></td><td>현재 온도가 임계값 이하인지 확인</td></tr>
+        <tr><td><code>lab-safe-run EXP -- COMMAND</code></td><td>안전장치와 로그 저장을 포함해 명령 실행</td></tr>
+        <tr><td><code>monitor-run EXP -- COMMAND</code></td><td><code>monitor.csv</code> 기록을 강조한 실행 wrapper</td></tr>
+        <tr><td><code>bench-suite EXP REPEATS</code></td><td>CPU/OpenCL 벤치를 반복 실행하고 suite 결과 저장</td></tr>
+        <tr><td><code>summarize-suite SUITE_DIR</code></td><td>suite 로그에서 <code>summary.csv</code> 생성</td></tr>
+        <tr><td><code>render-suite-report SUITE_DIR</code></td><td><code>summary.csv</code>에서 사람이 읽기 쉬운 <code>report.md</code> 생성</td></tr>
+        <tr><td><code>suite-stats SUITE_DIR</code></td><td>반복 실험의 평균, 중앙값, 표준편차, CV, 품질 플래그 생성</td></tr>
+        <tr><td><code>lab-doctor</code></td><td>실험 전 도구, OpenCL, 온도, 필수 파일 상태 점검</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>기본 사용법</h2>
+      <h3>새 실험 만들기</h3>
+      <pre><code>lab new my-test
+lab go my-test</code></pre>
+
+      <h3>가속기 상태 확인</h3>
+      <pre><code>ai-accel-check</code></pre>
+
+      <h3>안전하게 OpenCL 벤치 실행</h3>
+      <pre><code>lab-safe-run cpu-ai-kernel-baseline -- bench-opencl</code></pre>
+
+      <h3>AI 연산 패턴에 가까운 GEMM 벤치 실행</h3>
+      <pre><code>lab-safe-run cpu-ai-kernel-baseline -- bench-opencl-gemm</code></pre>
+
+      <h3>CPU/OpenCL suite 3회 반복</h3>
+      <pre><code>bench-suite cpu-ai-kernel-baseline 3</code></pre>
+
+      <h3>warm-up 3회 + measured 10회 프로토콜</h3>
+      <pre><code>LAB_WARMUPS=3 LAB_REPEATS=10 bench-suite cpu-ai-kernel-baseline</code></pre>
+
+      <h3>긴 실험을 5초 간격으로 모니터링</h3>
+      <pre><code>LAB_MONITOR_INTERVAL=5 monitor-run cpu-ai-kernel-baseline -- ./your-long-test</code></pre>
+
+      <h3>온도 임계값 변경</h3>
+      <pre><code>LAB_MAX_TEMP_C=80 lab-safe-run cpu-ai-kernel-baseline -- bench-opencl</code></pre>
+
+      <h3>나중에 NVIDIA GPU 장착 후 확인</h3>
+      <pre><code>nvidia-check
+ai-accel-check</code></pre>
+    </section>
+
+    <section>
+      <h2>저장되는 결과</h2>
+      <p>suite 실행 결과는 아래처럼 저장됩니다.</p>
+      <pre><code>~/lab/&lt;experiment&gt;/suites/&lt;timestamp&gt;/
+  summary.md
+  summary.csv
+  report.md
+  hardware-report-path.txt
+  ai-accel-check.txt
+  sensors-start.txt
+  sensors-end.txt
+  cpu-run-1.log
+  opencl-run-1.log
+  opencl-gemm-run-1.log</code></pre>
+
+      <p>개별 run은 아래처럼 저장됩니다.</p>
+      <pre><code>~/lab/&lt;experiment&gt;/runs/&lt;timestamp&gt;/
+  meta.txt
+  stdout.log
+  stderr.log
+  status.txt
+  result.json
+  manifest.json
+  monitor.csv
+  thermal-before.txt
+  thermal-after.txt
+  sensors-before.txt
+  sensors-after.txt</code></pre>
+    </section>
+
+    <section>
+      <h2>최근 검증값</h2>
+      <table>
+        <tr><th>항목</th><th>값</th></tr>
+        <tr><td>OpenCL device</td><td>Intel(R) HD Graphics 630</td></tr>
+        <tr><td>OpenCL vector add</td><td>성공</td></tr>
+        <tr><td>OpenCL bandwidth 예시</td><td>약 11 GB/s 전후</td></tr>
+        <tr><td>OpenCL GEMM 예시</td><td>256x256 행렬곱 약 4 GFLOP/s 전후</td></tr>
+        <tr><td>STREAM 예시</td><td>현재 샘플 설정에서 약 2.8 GB/s</td></tr>
+        <tr><td>OpenBLAS DGEMM 예시</td><td>256x256, 4 threads 샘플에서 약 83 GFLOP/s</td></tr>
+        <tr><td>sysbench 예시</td><td>2 threads, 2초 샘플에서 약 2700 events/s</td></tr>
+        <tr><td>CPU scalar_fma mean 예시</td><td>약 0.54초</td></tr>
+        <tr><td>thermal guard 예시</td><td>max_temp_c 약 50°C, threshold 85°C</td></tr>
+      </table>
+    </section>
+
+    <section class="warn">
+      <h2>남은 아쉬운 점</h2>
+      <ul>
+        <li>OpenCL GEMM은 추가됐지만 아직 naive 커널입니다. tiling/shared local memory 최적화 GEMM과 batch 변화 벤치가 더 필요합니다.</li>
+        <li>HD Graphics 630은 실험용 compute 장치로는 쓸 수 있지만, 최신 AI accelerator 수준의 성능은 기대하기 어렵습니다.</li>
+        <li>NVIDIA GPU가 들어오면 CUDA/cuDNN/ONNX Runtime GPU 경로를 별도로 추가해야 합니다.</li>
+        <li>SYCL/oneAPI 개발 환경은 아직 설치하지 않았습니다.</li>
+        <li>Docker/Podman 기반 격리 실험 환경은 아직 추가하지 않았습니다.</li>
+        <li>dotfiles 저장소화와 백업 자동화는 다음 단계입니다.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>안전 정책</h2>
+      <ul>
+        <li>기본적으로 <code>lab-safe-run</code> 또는 <code>bench-suite</code>로 실행합니다.</li>
+        <li>온도가 높은 상태에서는 실행을 거부합니다.</li>
+        <li>실험은 낮은 우선순위로 실행되어 데스크톱 사용성을 덜 방해합니다.</li>
+        <li>각 run은 <code>manifest.json</code>에 커널, 패키지, OpenCL, 명령, 스크립트 checksum을 기록합니다.</li>
+        <li>각 run은 <code>result.json</code>에 성공/실패, timeout, thermal abort 여부를 기록합니다.</li>
+        <li>반복 suite는 <code>stats.csv</code>에 평균, 중앙값, 표준편차, CV, 품질 플래그를 기록합니다.</li>
+        <li>커널 파라미터, 오버클럭, 외부 드라이버 저장소는 baseline이 충분히 쌓이기 전까지 피합니다.</li>
+        <li>결과는 로그와 CSV로 남겨 비교 가능하게 관리합니다.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

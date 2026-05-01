@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  monitor-run EXPERIMENT -- COMMAND [ARGS...]
+
+Environment:
+  LAB_MONITOR_INTERVAL=2  Seconds between monitor.csv samples
+  LAB_TIMEOUT=10m         Max runtime
+  LAB_MAX_TEMP_C=85       Thermal precheck threshold
+
+This is a readable alias for lab-safe-run. Output is stored under:
+  ~/lab/<experiment>/runs/<timestamp>/
+EOF
+}
+
+if [ $# -lt 3 ] || [ "${2:-}" != "--" ]; then
+  usage >&2
+  exit 2
+fi
+
+exec "$HOME/bin/lab-safe-run" "$@"

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAX_TEMP_C="${1:-${LAB_MAX_TEMP_C:-85}}"
+max_seen="0"
+max_source="none"
+
+for path in /sys/class/thermal/thermal_zone*/temp; do
+  [ -e "$path" ] || continue
+  raw="$(cat "$path" 2>/dev/null || true)"
+  [ -n "$raw" ] || continue
+  temp="$(awk -v raw="$raw" 'BEGIN { printf "%.1f", raw / 1000 }')"
+  if awk -v a="$max_seen" -v b="$temp" 'BEGIN { exit !(b > a) }'; then
+    max_seen="$temp"
+    max_source="$path"
+  fi
+done
+
+if command -v sensors >/dev/null 2>&1; then
+  sensor_max="$(sensors 2>/dev/null \
+    | sed -n 's/^[^+]*+\([0-9][0-9]*\(\.[0-9][0-9]*\)\?\).*C.*/\1/p' \
+    | sort -nr \
+    | head -n 1)"
+  if [ -n "$sensor_max" ]; then
+    if awk -v a="$max_seen" -v b="$sensor_max" 'BEGIN { exit !(b > a) }'; then
+      max_seen="$sensor_max"
+      max_source="sensors"
+    fi
+  fi
+fi
+
+printf 'max_temp_c=%s threshold_c=%s source=%s\n' "$max_seen" "$MAX_TEMP_C" "$max_source"
+
+awk -v temp="$max_seen" -v max="$MAX_TEMP_C" 'BEGIN { exit !(temp < max) }'

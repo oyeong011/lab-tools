@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+suite_dir="${1:-}"
+if [ -z "$suite_dir" ]; then
+  printf 'Usage: summarize-suite SUITE_DIR\n' >&2
+  exit 2
+fi
+
+if [ ! -d "$suite_dir" ]; then
+  printf 'Suite directory not found: %s\n' "$suite_dir" >&2
+  exit 2
+fi
+
+csv="$suite_dir/summary.csv"
+printf 'workload,run,status,scalar_fma_mean_s,memory_walk_mean_s,sha256_mean_s,stream_triad_mb_s,openblas_gflops,sysbench_events_s,opencl_kernel_s,opencl_bandwidth_gbs,gemm_gflops,max_error,run_dir\n' > "$csv"
+
+status_for() {
+  if grep -q '^Run complete:' "$1"; then
+    printf 'ok'
+  elif grep -q '^Run failed' "$1"; then
+    printf 'failed'
+  else
+    printf 'unknown'
+  fi
+}
+
+run_dir_for() {
+  sed -n 's/^Run complete: //p; s/^Run failed with status [0-9][0-9]*: //p' "$1" | tail -n 1
+}
+
+for log in "$suite_dir"/cpu-run-*.log; do
+  [ -e "$log" ] || continue
+  run="$(basename "$log" | sed -E 's/cpu-run-([0-9]+)\.log/\1/')"
+  status="$(status_for "$log")"
+  scalar="$(sed -n 's/^scalar_fma:.*mean=\([0-9.]*\)s.*/\1/p' "$log" | tail -n 1)"
+  memory="$(sed -n 's/^memory_walk_32m:.*mean=\([0-9.]*\)s.*/\1/p' "$log" | tail -n 1)"
+  sha="$(sed -n 's/^sha256_512m:.*mean=\([0-9.]*\)s.*/\1/p' "$log" | tail -n 1)"
+  run_dir="$(run_dir_for "$log")"
+  printf 'cpu,%s,%s,%s,%s,%s,,,,,,,,%s\n' "$run" "$status" "$scalar" "$memory" "$sha" "$run_dir" >> "$csv"
+done
+
+for log in "$suite_dir"/standard-cpu-run-*.log; do
+  [ -e "$log" ] || continue
+  run="$(basename "$log" | sed -E 's/standard-cpu-run-([0-9]+)\.log/\1/')"
+  status="$(status_for "$log")"
+  stream="$(sed -n 's/^Triad bandwidth: \([0-9.]*\) MB\/s.*/\1/p' "$log" | tail -n 1)"
+  openblas="$(sed -n 's/^OpenBLAS GFLOP\/s: \([0-9.]*\).*/\1/p' "$log" | tail -n 1)"
+  sysbench="$(sed -n 's/^[[:space:]]*events per second:[[:space:]]*\([0-9.]*\).*/\1/p' "$log" | tail -n 1)"
+  run_dir="$(run_dir_for "$log")"
+  printf 'standard-cpu,%s,%s,,,,%s,%s,%s,,,,,%s\n' "$run" "$status" "$stream" "$openblas" "$sysbench" "$run_dir" >> "$csv"
+done
+
+for log in "$suite_dir"/opencl-run-*.log; do
+  [ -e "$log" ] || continue
+  run="$(basename "$log" | sed -E 's/opencl-run-([0-9]+)\.log/\1/')"
+  status="$(status_for "$log")"
+  kernel="$(sed -n 's/^Kernel time: \([0-9.]*\) s.*/\1/p' "$log" | tail -n 1)"
+  bandwidth="$(sed -n 's/^Device approx bandwidth: \([0-9.]*\) GB\/s.*/\1/p' "$log" | tail -n 1)"
+  if [ -z "$bandwidth" ]; then
+    bandwidth="$(sed -n 's/^Approx bandwidth: \([0-9.]*\) GB\/s.*/\1/p' "$log" | tail -n 1)"
+  fi
+  max_error="$(sed -n 's/^Max error: \([^ ]*\).*/\1/p' "$log" | tail -n 1)"
+  run_dir="$(run_dir_for "$log")"
+  printf 'opencl-vector,%s,%s,,,,,,,%s,%s,,%s,%s\n' "$run" "$status" "$kernel" "$bandwidth" "$max_error" "$run_dir" >> "$csv"
+done
+
+for log in "$suite_dir"/opencl-gemm-run-*.log; do
+  [ -e "$log" ] || continue
+  run="$(basename "$log" | sed -E 's/opencl-gemm-run-([0-9]+)\.log/\1/')"
+  status="$(status_for "$log")"
+  kernel="$(sed -n 's/^Kernel time: \([0-9.]*\) s.*/\1/p' "$log" | tail -n 1)"
+  gflops="$(sed -n 's/^Device approx GFLOP\/s: \([0-9.]*\).*/\1/p' "$log" | tail -n 1)"
+  if [ -z "$gflops" ]; then
+    gflops="$(sed -n 's/^Approx GFLOP\/s: \([0-9.]*\).*/\1/p' "$log" | tail -n 1)"
+  fi
+  max_error="$(sed -n 's/^Sample max error: \([^ ]*\).*/\1/p' "$log" | tail -n 1)"
+  run_dir="$(run_dir_for "$log")"
+  printf 'opencl-gemm,%s,%s,,,,,,,%s,,%s,%s,%s\n' "$run" "$status" "$kernel" "$gflops" "$max_error" "$run_dir" >> "$csv"
+done
+
+printf '%s\n' "$csv"

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '== STREAM ==\n'
+bench-stream
+printf '\n== OpenBLAS DGEMM ==\n'
+bench-openblas
+printf '\n== sysbench CPU ==\n'
+bench-sysbench

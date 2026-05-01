@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+have() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+section() {
+  printf '\n== %s ==\n' "$1"
+}
+
+section "Detected hardware"
+lscpu | sed -n '1,16p'
+printf '\n'
+lspci -nn | grep -Ei 'vga|3d|display|processing|accelerator|nvidia|amd|intel' || true
+printf '\n'
+lsusb | grep -Ei 'coral|google|movidius|intel|nvidia|amd|accelerator|neural|tpu|npu' || true
+
+section "DRM/render devices"
+ls -la /dev/dri 2>/dev/null || printf 'No /dev/dri found.\n'
+
+section "Runtime tools"
+for tool in clinfo sycl-ls ze_info vainfo intel_gpu_top nvidia-smi nvcc rocminfo rocm-smi; do
+  if have "$tool"; then
+    printf '%-16s %s\n' "$tool" "$(command -v "$tool")"
+  else
+    printf '%-16s missing\n' "$tool"
+  fi
+done
+
+section "OpenCL ICD"
+if [ -d /etc/OpenCL/vendors ]; then
+  ls -la /etc/OpenCL/vendors
+else
+  printf 'No /etc/OpenCL/vendors directory found.\n'
+fi
+
+section "NVIDIA"
+if command -v nvidia-smi >/dev/null 2>&1; then
+  nvidia-smi || true
+else
+  printf 'NVIDIA runtime not active. This is expected until an NVIDIA GPU and driver are installed.\n'
+fi
+
+section "Level Zero"
+LDCONFIG="$(command -v ldconfig || true)"
+if [ -z "$LDCONFIG" ] && [ -x /sbin/ldconfig ]; then
+  LDCONFIG=/sbin/ldconfig
+fi
+if [ -n "$LDCONFIG" ]; then
+  ZE_LIBS="$("$LDCONFIG" -p 2>/dev/null | grep -E 'libze(_loader)?' || true)"
+else
+  ZE_LIBS=""
+fi
+if [ -n "$ZE_LIBS" ]; then
+  printf '%s\n' "$ZE_LIBS"
+else
+  printf 'Level Zero loader not found in ldconfig cache.\n'
+fi
+
+section "OpenCL device query"
+if have clinfo; then
+  clinfo | sed -n '1,120p'
+else
+  printf 'clinfo is not installed, so OpenCL devices cannot be queried yet.\n'
+fi
+
+section "Suggested Ubuntu packages"
+printf '%s\n' 'sudo apt-get update'
+printf '%s\n' 'sudo apt-get install -y clinfo intel-opencl-icd intel-gpu-tools vainfo libze1'
+printf '%s\n' '# Future NVIDIA GPU: use Ubuntu Additional Drivers, then verify with nvidia-check.'
+
+section "Interpretation"
+if have clinfo && clinfo 2>/dev/null | grep 'Device Name' >/dev/null; then
+  printf 'OpenCL device found. Save this output with: ai-accel-check | tee ~/lab/_hardware/ai-accel-$(date +%%Y%%m%%d-%%H%%M%%S).txt\n'
+else
+  printf 'Intel iGPU is visible through i915/DRM, but OpenCL compute runtime is not confirmed yet.\n'
+fi

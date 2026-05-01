@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+SIZE="${1:-${LAB_OPENBLAS_SIZE:-1024}}"
+REPEATS="${2:-${LAB_OPENBLAS_REPEATS:-3}}"
+THREADS="${OPENBLAS_NUM_THREADS:-$(nproc)}"
+BUILD_DIR="$LAB_HOME/_benchmarks/cpu"
+BIN="$BUILD_DIR/openblas-gemm"
+OUT="$BUILD_DIR/openblas-gemm-${SIZE}-$(date +%Y%m%d-%H%M%S).txt"
+
+mkdir -p "$BUILD_DIR"
+gcc -O3 -march=native "$HOME/.config/lab/openblas-gemm.c" -lopenblas -lm -o "$BIN"
+OPENBLAS_NUM_THREADS="$THREADS" "$BIN" "$SIZE" "$REPEATS" | tee "$OUT"
+printf '\nOPENBLAS_NUM_THREADS=%s\n' "$THREADS" | tee -a "$OUT"
+printf 'Saved: %s\n' "$OUT"
