@@ -64,9 +64,9 @@ else
 fi
 
 printf '\n== OpenCL quick check ==\n'
-clinfo_out="$(clinfo 2>/dev/null || true)"
-if printf '%s\n' "$clinfo_out" | grep -q 'Device Name'; then
-  printf '%s\n' "$clinfo_out" | sed -n 's/^[[:space:]]*Device Name[[:space:]]*//p' | head -n 3
+clinfo_list="$(clinfo -l 2>/dev/null || true)"
+if printf '%s\n' "$clinfo_list" | grep -q 'Device #'; then
+  printf '%s\n' "$clinfo_list"
 else
   printf 'warn no OpenCL device detected\n'
   warn=$((warn + 1))
