@@ -101,6 +101,8 @@ sensor-snapshot > "$SUITE_DIR/sensors-end.txt" || true
 summarize-suite "$SUITE_DIR" > "$SUITE_DIR/summary-csv-path.txt"
 suite-stats "$SUITE_DIR" > "$SUITE_DIR/stats-csv-path.txt"
 render-suite-report "$SUITE_DIR" > "$SUITE_DIR/report-path.txt"
+render-method-section "$SUITE_DIR" > "$SUITE_DIR/method-md-path.txt" 2>/dev/null || true
+render-repro-checklist "$SUITE_DIR" > "$SUITE_DIR/repro-md-path.txt" 2>/dev/null || true
 {
   printf -- '- Finished: `%s`\n' "$(date --iso-8601=seconds)"
   printf -- '- CSV: `%s`\n' "$SUITE_DIR/summary.csv"
