@@ -78,7 +78,8 @@ if [ ! -d "$REPO/.git" ]; then
   git -C "$REPO" init
 fi
 
-git -C "$REPO" add -f README.md .gitignore bin config notes
+git -C "$REPO" add -f README.md HANDOVER.md .gitignore bin config notes 2>/dev/null \
+  || git -C "$REPO" add -f README.md .gitignore bin config notes
 if git -C "$REPO" diff --cached --quiet; then
   printf 'lab-tools already up to date: %s\n' "$REPO"
 else
