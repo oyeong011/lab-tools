@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""Generate a paper-ready Methodology section from a suite directory.
+
+Reads suite metadata + a representative manifest.json and emits Markdown
+suitable for inclusion in a paper draft. Output: <SUITE_DIR>/method.md
+"""
+import csv
+import json
+import re
+import sys
+from pathlib import Path
+
+
+def first_run_manifest(suite_dir: Path):
+    summary_csv = suite_dir / "summary.csv"
+    if not summary_csv.exists():
+        return None
+    with summary_csv.open() as f:
+        for row in csv.DictReader(f):
+            rd = (row.get("run_dir") or "").strip()
+            if not rd:
+                continue
+            mp = Path(rd) / "manifest.json"
+            if mp.exists():
+                try:
+                    return json.load(mp.open())
+                except Exception:
+                    continue
+    return None
+
+
+def grep_lscpu(lscpu_text, key):
+    if not lscpu_text:
+        return ""
+    for line in lscpu_text.splitlines():
+        if line.strip().startswith(key):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def detect_gpu(manifest):
+    if not manifest:
+        return ""
+    accel = manifest.get("accelerators", {})
+    opencl = (accel.get("opencl") or {}).get("output", "")
+    pci = (accel.get("pci") or {}).get("output", "")
+    devices = []
+    for line in opencl.splitlines():
+        m = re.search(r"Device Name\s+(.+)", line)
+        if m:
+            devices.append(m.group(1).strip())
+    if devices:
+        return ", ".join(dict.fromkeys(devices))
+    for line in pci.splitlines():
+        if re.search(r"VGA|3D|Display", line, re.IGNORECASE):
+            return line.strip()
+    return ""
+
+
+def parse_summary_md(suite_dir: Path):
+    md = suite_dir / "summary.md"
+    fields = {"experiment": "", "warmups": "", "repeats": "", "shuffle": "", "shuffle_seed": "", "pinned": ""}
+    if not md.exists():
+        return fields
+    for line in md.read_text(errors="replace").splitlines():
+        line = line.strip()
+        if line.startswith("- Experiment:"):
+            fields["experiment"] = line.split("`")[1] if "`" in line else ""
+        elif line.startswith("- Warmups:"):
+            fields["warmups"] = line.split("`")[1] if "`" in line else ""
+        elif line.startswith("- Repeats:"):
+            fields["repeats"] = line.split("`")[1] if "`" in line else ""
+        elif line.startswith("- Shuffle:"):
+            ticks = re.findall(r"`([^`]*)`", line)
+            if len(ticks) >= 2:
+                fields["shuffle"] = ticks[0]
+                fields["shuffle_seed"] = ticks[1]
+        elif line.startswith("- System pinned:"):
+            fields["pinned"] = line.split("`")[1] if "`" in line else ""
+    return fields
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: render-method-section SUITE_DIR", file=sys.stderr)
+        return 2
+    suite = Path(sys.argv[1]).resolve()
+    if not suite.is_dir():
+        print(f"Not a directory: {suite}", file=sys.stderr)
+        return 2
+
+    meta = parse_summary_md(suite)
+    manifest = first_run_manifest(suite) or {}
+    sysmeta = manifest.get("system", {})
+    lscpu_text = (sysmeta.get("lscpu") or {}).get("output", "")
+    cpu_model = grep_lscpu(lscpu_text, "Model name")
+    cpu_cores = grep_lscpu(lscpu_text, "Core(s) per socket")
+    cpu_threads = grep_lscpu(lscpu_text, "Thread(s) per core")
+    cpu_sockets = grep_lscpu(lscpu_text, "Socket(s)")
+    governors = (sysmeta.get("governors") or {}).get("output", "").strip()
+    smt = (sysmeta.get("smt") or {}).get("output", "").strip()
+    no_turbo = (sysmeta.get("turbo") or {}).get("output", "").strip()
+    kernel = (sysmeta.get("uname") or {}).get("output", "").strip()
+    gcc = (manifest.get("tool_versions", {}).get("gcc") or {}).get("output", "").splitlines()[0:1]
+    gcc_v = gcc[0] if gcc else ""
+    python_v = manifest.get("system", {}).get("python", "")
+    gpu = detect_gpu(manifest)
+
+    cores_total = ""
+    try:
+        c, t, s = int(cpu_cores or 0), int(cpu_threads or 0), int(cpu_sockets or 0)
+        if c and t and s:
+            cores_total = f"{c*s}C/{c*t*s}T"
+    except ValueError:
+        pass
+
+    out = suite / "method.md"
+    with out.open("w") as f:
+        f.write("## Experimental Methodology\n\n")
+        f.write("### Hardware\n\n")
+        if cpu_model:
+            line = f"- CPU: {cpu_model}"
+            if cores_total:
+                line += f" ({cores_total})"
+            f.write(line + "\n")
+        if gpu:
+            f.write(f"- GPU/Accelerator: {gpu}\n")
+        f.write("\n")
+
+        f.write("### Software\n\n")
+        if kernel:
+            f.write(f"- Kernel: `{kernel}`\n")
+        f.write(f"- Python: {python_v}\n" if python_v else "")
+        f.write(f"- Compiler: {gcc_v}\n" if gcc_v else "")
+        f.write("- Energy measurement: Intel RAPL via `/sys/class/powercap/intel-rapl/`\n")
+        f.write("\n")
+
+        f.write("### System Tuning\n\n")
+        f.write(f"- CPU governor: {governors or 'unknown'} (target: `performance`)\n")
+        f.write(f"- Turbo (intel_pstate.no_turbo): {no_turbo or 'unknown'} (target: `1`, disabled)\n")
+        f.write(f"- SMT: {smt or 'unknown'}\n")
+        f.write(f"- Pinned at run-time: {meta['pinned'] or 'unknown'}\n")
+        f.write("- ASLR: 0 (disabled) during measurement campaigns\n")
+        f.write("- Thermal guard: 85°C precheck and 90°C event flagging via `/sys/class/thermal`\n")
+        f.write("\n")
+
+        f.write("### Protocol\n\n")
+        f.write(f"- Warmup runs: {meta['warmups'] or '0'}\n")
+        f.write(f"- Measured repeats per workload: {meta['repeats'] or 'unknown'}\n")
+        f.write(f"- Workload execution order: randomized (seed = {meta['shuffle_seed'] or 'recorded in execution-order.csv'}) "
+                "to mitigate systematic order effects [Mytkowicz et al., ASPLOS'09].\n")
+        f.write("- Each run executed under `nice -n 10 ionice -c 2 -n 7` with a per-run timeout, "
+                "process-level stdout/stderr capture, and a 1–2 Hz monitor of temperature, "
+                "load, available memory, and per-domain RAPL energy counters.\n")
+        f.write("- First run of each workload (by execution order) is labeled `cold`; "
+                "subsequent runs are labeled `steady`. Statistics are reported for the combined sample "
+                "and separately for the steady subset.\n")
+        f.write("\n")
+
+        f.write("### Statistical Analysis\n\n")
+        f.write("- Central tendency: arithmetic mean and median.\n")
+        f.write("- Dispersion: sample standard deviation, coefficient of variation (CV%), "
+                "and median absolute deviation (MAD).\n")
+        f.write("- Outlier flagging: |x − median| > 3 × 1.4826 × MAD (Iglewicz & Hoaglin, 1993). "
+                "Outliers are flagged, not removed.\n")
+        f.write("- Confidence intervals: 95% bootstrap percentile interval over 10,000 resamples "
+                "(seed-fixed for reproducibility), reported alongside parametric ±1.96σ/√n.\n")
+        f.write("- Pairwise suite comparison: Mann-Whitney U (two-sided, α = 0.05) "
+                "with Cliff's δ for non-parametric effect size, classified per Romano et al. (2006) "
+                "thresholds (negligible < 0.147 ≤ small < 0.33 ≤ medium < 0.474 ≤ large).\n")
+        f.write("\n")
+
+        f.write("### Reproducibility Artifacts\n\n")
+        f.write("Each run directory contains: `manifest.json` (system snapshot, tool versions, "
+                "and SHA-256 of all source/config files), `monitor.csv` (time series of thermal "
+                "and energy counters), `result.json` (status, exit code, duration, total energy "
+                "per RAPL domain, throttle event flags), `stdout.log`, and `stderr.log`. "
+                "Each suite directory adds `execution-order.csv`, `summary.csv`, `stats.csv`, "
+                "and a Markdown report.\n")
+
+    print(out)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

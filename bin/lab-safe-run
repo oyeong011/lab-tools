@@ -216,12 +216,14 @@ if os.path.exists(monitor_path):
         if delta_uj < 0:
             continue
         energy[key] = delta_uj / 1e6
+    throttle_threshold = 90.0
+    thermal_event_count = 0
     for r in rows:
         t = (r.get("max_temp_c") or "").strip()
         try:
-            if t and float(t) >= 90.0:
+            if t and float(t) >= throttle_threshold:
                 throttled = True
-                break
+                thermal_event_count += 1
         except ValueError:
             pass
 
@@ -247,6 +249,7 @@ result = {
     "timeout": code == 124,
     "thermal_runtime_abort": code == 98,
     "thermal_event_observed": throttled,
+    "thermal_event_count": thermal_event_count,
     "system_pinned": pinned,
     "energy_j": energy,
     "avg_power_w": power,

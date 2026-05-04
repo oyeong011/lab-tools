@@ -79,18 +79,49 @@ for log in "$suite_dir"/opencl-gemm-run-*.log; do
   printf 'opencl-gemm,%s,%s,,,,,,,%s,,%s,%s,%s\n' "$run" "$status" "$kernel" "$gflops" "$max_error" "$run_dir" >> "$csv"
 done
 
-python3 - "$csv" <<'PY'
+python3 - "$csv" "$suite_dir" <<'PY'
 import csv, json, os, sys
-csv_path = sys.argv[1]
+csv_path, suite_dir = sys.argv[1], sys.argv[2]
+
 with open(csv_path, newline="") as f:
     rows = list(csv.DictReader(f))
-extra = ["duration_s", "pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j", "pkg_power_w"]
+
+extra = ["duration_s", "pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j", "pkg_power_w", "phase", "thermal_event_count"]
 fieldnames = list(rows[0].keys()) if rows else []
 for col in extra:
     if col not in fieldnames:
         fieldnames.append(col)
+
+order_path = os.path.join(suite_dir, "execution-order.csv")
+order_lookup = {}
+first_seen_order = {}
+if os.path.exists(order_path):
+    with open(order_path, newline="") as f:
+        for r in csv.DictReader(f):
+            try:
+                o = int(r["order"])
+            except (KeyError, ValueError):
+                continue
+            wl, rep = r.get("workload", ""), r.get("repeat", "")
+            order_lookup[(wl, rep)] = o
+            if wl not in first_seen_order or o < first_seen_order[wl]:
+                first_seen_order[wl] = o
+
+def phase_for(workload, run):
+    if workload == "opencl-vector":
+        wl_key = "opencl"
+    elif workload == "standard-cpu":
+        wl_key = "standard-cpu"
+    else:
+        wl_key = workload
+    o = order_lookup.get((wl_key, run))
+    if o is None:
+        return "all"
+    return "cold" if o == first_seen_order.get(wl_key) else "steady"
+
 for row in rows:
     rd = (row.get("run_dir") or "").strip()
+    row["phase"] = phase_for(row.get("workload", ""), row.get("run", ""))
     if not rd:
         continue
     rj = os.path.join(rd, "result.json")
@@ -109,6 +140,9 @@ for row in rows:
     power = data.get("avg_power_w") or {}
     if "pkg_power_w" in power:
         row["pkg_power_w"] = power["pkg_power_w"]
+    if data.get("thermal_event_count") is not None:
+        row["thermal_event_count"] = data["thermal_event_count"]
+
 with open(csv_path, "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=fieldnames)
     w.writeheader()

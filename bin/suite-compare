@@ -96,12 +96,11 @@ def mann_whitney_p(a, b):
 
 
 def verdict(p, delta, alpha):
-    if p is None:
+    if p is None or delta != delta:
         return "indeterminate"
     if p >= alpha:
         return "ns"
-    mag = magnitude(delta)
-    if mag == "negligible":
+    if magnitude(delta) == "negligible":
         return "stat_sig_negligible"
     return "significant"
 
@@ -139,8 +138,12 @@ def main():
             med_a, med_b = statistics.median(xs), statistics.median(ys)
             diff_pct = ((mean_b - mean_a) / mean_a * 100.0) if mean_a else float("nan")
             p, p_method = mann_whitney_p(xs, ys)
-            delta = cliffs_delta(xs, ys)
-            mag = magnitude(delta)
+            if n_a < 2 or n_b < 2:
+                delta = float("nan")
+                mag = "indeterminate"
+            else:
+                delta = cliffs_delta(xs, ys)
+                mag = magnitude(delta)
             v = verdict(p, delta, args.alpha)
             improved = ""
             if p is not None and p < args.alpha and mag != "negligible":

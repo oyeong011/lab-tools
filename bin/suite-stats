@@ -1,76 +1,161 @@
 #!/usr/bin/env python3
+"""Compute per-suite statistics with phase awareness, bootstrap CIs, and MAD outliers.
+
+Input: <SUITE_DIR>/summary.csv (produced by summarize-suite)
+Output: <SUITE_DIR>/stats.csv
+
+Environment:
+  LAB_BOOTSTRAP_N=10000   number of bootstrap resamples (default 10000)
+  LAB_BOOTSTRAP_SEED=12345 seed for reproducible bootstrap
+  LAB_OUTLIER_MAD_K=3.0    MAD threshold (|x-median| > k*1.4826*MAD => outlier)
+  LAB_CV_UNSTABLE=5.0      CV%% threshold for quality=unstable
+"""
 import csv
 import math
+import os
+import random
 import statistics
 import sys
 from collections import defaultdict
 from pathlib import Path
 
 
+METRICS = [
+    "scalar_fma_mean_s",
+    "memory_walk_mean_s",
+    "sha256_mean_s",
+    "stream_triad_mb_s",
+    "openblas_gflops",
+    "sysbench_events_s",
+    "opencl_kernel_s",
+    "opencl_bandwidth_gbs",
+    "gemm_gflops",
+    "duration_s",
+    "pkg_energy_j",
+    "core_energy_j",
+    "uncore_energy_j",
+    "dram_energy_j",
+    "pkg_power_w",
+]
+
+
 def to_float(value):
     try:
         return float(value)
-    except Exception:
+    except (TypeError, ValueError):
         return None
+
+
+def mad(values, median):
+    if not values:
+        return 0.0
+    return statistics.median(abs(v - median) for v in values)
+
+
+def count_outliers(values, k):
+    if len(values) < 3:
+        return 0
+    med = statistics.median(values)
+    m = mad(values, med)
+    if m == 0:
+        return 0
+    threshold = k * 1.4826 * m
+    return sum(1 for v in values if abs(v - med) > threshold)
+
+
+def bootstrap_ci_mean(values, n_resamples, seed):
+    if len(values) < 2:
+        return float("nan"), float("nan")
+    rng = random.Random(seed)
+    means = []
+    n = len(values)
+    for _ in range(n_resamples):
+        sample = [values[rng.randrange(n)] for _ in range(n)]
+        means.append(sum(sample) / n)
+    means.sort()
+    lo = means[int(0.025 * n_resamples)]
+    hi = means[int(0.975 * n_resamples) - 1]
+    return lo, hi
+
+
+def fmt(x):
+    if x is None or (isinstance(x, float) and math.isnan(x)):
+        return ""
+    if isinstance(x, float):
+        return f"{x:.6g}"
+    return str(x)
 
 
 def main():
     if len(sys.argv) != 2:
         print("Usage: suite-stats SUITE_DIR", file=sys.stderr)
         return 2
+
     suite = Path(sys.argv[1])
     src = suite / "summary.csv"
     if not src.exists():
         print(f"summary.csv not found: {src}", file=sys.stderr)
         return 2
 
+    bootstrap_n = int(os.environ.get("LAB_BOOTSTRAP_N", "10000"))
+    bootstrap_seed = int(os.environ.get("LAB_BOOTSTRAP_SEED", "12345"))
+    mad_k = float(os.environ.get("LAB_OUTLIER_MAD_K", "3.0"))
+    cv_unstable = float(os.environ.get("LAB_CV_UNSTABLE", "5.0"))
+
     rows = list(csv.DictReader(src.open()))
-    metrics = [
-        "scalar_fma_mean_s",
-        "memory_walk_mean_s",
-        "sha256_mean_s",
-        "stream_triad_mb_s",
-        "openblas_gflops",
-        "sysbench_events_s",
-        "opencl_kernel_s",
-        "opencl_bandwidth_gbs",
-        "gemm_gflops",
-        "duration_s",
-        "pkg_energy_j",
-        "core_energy_j",
-        "uncore_energy_j",
-        "dram_energy_j",
-        "pkg_power_w",
-    ]
-    grouped = defaultdict(lambda: defaultdict(list))
+
+    grouped = defaultdict(list)
     for row in rows:
-        workload = row.get("workload", "")
         if row.get("status") != "ok":
             continue
-        for metric in metrics:
-            value = to_float(row.get(metric, ""))
-            if value is not None:
-                grouped[workload][metric].append(value)
+        workload = row.get("workload", "")
+        phase = row.get("phase", "all") or "all"
+        for metric in METRICS:
+            v = to_float(row.get(metric, ""))
+            if v is None:
+                continue
+            grouped[(workload, "all", metric)].append(v)
+            if phase in ("cold", "steady"):
+                grouped[(workload, phase, metric)].append(v)
 
     out = suite / "stats.csv"
+    fields = [
+        "workload", "phase", "metric", "n",
+        "mean", "median", "min", "max",
+        "stddev", "cv_percent",
+        "ci95_half_width", "bootstrap_ci_low", "bootstrap_ci_high",
+        "mad", "outliers_n", "quality",
+    ]
     with out.open("w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["workload", "metric", "n", "mean", "median", "min", "max", "stddev", "cv_percent", "ci95_half_width", "quality"])
-        for workload in sorted(grouped):
-            for metric in sorted(grouped[workload]):
-                values = grouped[workload][metric]
-                n = len(values)
-                mean = statistics.fmean(values)
-                median = statistics.median(values)
-                stdev = statistics.stdev(values) if n > 1 else 0.0
-                cv = (stdev / mean * 100.0) if mean else 0.0
-                ci95 = 1.96 * stdev / math.sqrt(n) if n > 1 else 0.0
+        w = csv.writer(f)
+        w.writerow(fields)
+        for (workload, phase, metric) in sorted(grouped):
+            values = grouped[(workload, phase, metric)]
+            n = len(values)
+            mean = statistics.fmean(values)
+            median = statistics.median(values)
+            stdev = statistics.stdev(values) if n > 1 else 0.0
+            cv = (stdev / mean * 100.0) if mean else 0.0
+            ci95 = 1.96 * stdev / math.sqrt(n) if n > 1 else 0.0
+            boot_lo, boot_hi = bootstrap_ci_mean(values, bootstrap_n, bootstrap_seed)
+            m = mad(values, median)
+            outliers = count_outliers(values, mad_k)
+            if n < 3:
+                quality = "low_n"
+            elif cv > cv_unstable:
+                quality = "unstable"
+            elif outliers > 0:
+                quality = "outliers"
+            else:
                 quality = "ok"
-                if n < 3:
-                    quality = "low_n"
-                elif cv > 5.0:
-                    quality = "unstable"
-                writer.writerow([workload, metric, n, f"{mean:.6g}", f"{median:.6g}", f"{min(values):.6g}", f"{max(values):.6g}", f"{stdev:.6g}", f"{cv:.3f}", f"{ci95:.6g}", quality])
+            w.writerow([
+                workload, phase, metric, n,
+                fmt(mean), fmt(median), fmt(min(values)), fmt(max(values)),
+                fmt(stdev), f"{cv:.3f}",
+                fmt(ci95), fmt(boot_lo), fmt(boot_hi),
+                fmt(m), outliers, quality,
+            ])
+
     print(out)
     return 0
 

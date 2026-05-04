@@ -50,6 +50,8 @@ def quality(stats_csv):
         return "empty"
     if any(q == "unstable" for q in qualities):
         return "unstable"
+    if any(q == "outliers" for q in qualities):
+        return "outliers"
     if any(q == "low_n" for q in qualities):
         return "low_n"
     return "ok"

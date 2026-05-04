@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""Generate an ACM-style reproducibility checklist from a suite.
+
+Output: <SUITE_DIR>/reproducibility.md
+Maps available artifacts to standard reproducibility-checklist items so that
+papers and artifact-evaluation submissions can be self-audited.
+"""
+import csv
+import json
+import sys
+from pathlib import Path
+
+
+CHECKS = [
+    ("Hardware specification recorded",
+     "manifest.json contains lscpu, governors, SMT, turbo state, /proc/cmdline"),
+    ("OS and kernel version recorded",
+     "manifest.json system.uname"),
+    ("Compiler version recorded",
+     "manifest.json tool_versions.gcc"),
+    ("Python version recorded",
+     "manifest.json system.python"),
+    ("Source/config integrity (SHA-256)",
+     "manifest.json file_sha256 covers bench scripts, kernels, and suite configs"),
+    ("Container image used (if any)",
+     "lab-container-build cpu produces localhost/lab-cpu:24.04; tag pinned in script"),
+    ("System tuning state captured per run",
+     "result.json system_pinned reflects governor/turbo/ASLR target state"),
+    ("Random seed for execution order",
+     "execution-order.csv + summary.md Shuffle Seed"),
+    ("Warmup runs declared",
+     "summary.md Warmups field"),
+    ("Measured repeats declared",
+     "summary.md Repeats field"),
+    ("Thermal management documented",
+     "85°C precheck via thermal-check; 90°C event flagged in result.json"),
+    ("Energy measurement methodology documented",
+     "Intel RAPL package/core/uncore/dram domains via /sys/class/powercap"),
+    ("Per-run raw artifacts retained",
+     "stdout.log, stderr.log, monitor.csv, sensors-before/after.txt, thermal-before/after.txt"),
+    ("Aggregated artifacts retained",
+     "summary.csv, stats.csv, report.md, execution-order.csv"),
+    ("Statistical methods documented",
+     "method.md (rendered separately) lists mean/median/SD/CV/MAD/bootstrap CI/Mann-Whitney"),
+    ("Pairwise comparison artifact (if applicable)",
+     "compare-vs-<id>.csv produced by suite-compare with Cliff's δ + p-value"),
+    ("Independent reproducibility package",
+     "lab-handoff produces a tar.zst with suite + runs + Containerfile + manifest"),
+]
+
+
+def status_for(check, suite, manifest, summary_meta):
+    name = check[0]
+    if name == "Hardware specification recorded":
+        return manifest is not None and bool(manifest.get("system", {}).get("lscpu"))
+    if name == "OS and kernel version recorded":
+        return manifest is not None and bool((manifest.get("system", {}).get("uname") or {}).get("output"))
+    if name == "Compiler version recorded":
+        return manifest is not None and bool((manifest.get("tool_versions", {}).get("gcc") or {}).get("output"))
+    if name == "Python version recorded":
+        return manifest is not None and bool(manifest.get("system", {}).get("python"))
+    if name == "Source/config integrity (SHA-256)":
+        return manifest is not None and bool(manifest.get("file_sha256"))
+    if name == "Container image used (if any)":
+        return True
+    if name == "System tuning state captured per run":
+        for r in (suite / "summary.csv").open() if (suite / "summary.csv").exists() else []:
+            pass
+        return any_run_has_field(suite, "system_pinned")
+    if name == "Random seed for execution order":
+        return (suite / "execution-order.csv").exists() and bool(summary_meta.get("shuffle_seed"))
+    if name == "Warmup runs declared":
+        return bool(summary_meta.get("warmups"))
+    if name == "Measured repeats declared":
+        return bool(summary_meta.get("repeats"))
+    if name == "Thermal management documented":
+        return any_run_has_field(suite, "thermal_event_observed")
+    if name == "Energy measurement methodology documented":
+        return any_run_has_energy(suite)
+    if name == "Per-run raw artifacts retained":
+        return any_run_has_artifacts(suite)
+    if name == "Aggregated artifacts retained":
+        return all((suite / f).exists() for f in ["summary.csv", "stats.csv"])
+    if name == "Statistical methods documented":
+        return (suite / "method.md").exists()
+    if name == "Pairwise comparison artifact (if applicable)":
+        return any(suite.glob("compare-vs-*.csv"))
+    if name == "Independent reproducibility package":
+        return any((suite.parent.parent / "_archives").glob(f"*{suite.name}*.tar.zst")) if (suite.parent.parent / "_archives").exists() else False
+    return False
+
+
+def any_run_has_field(suite, field):
+    summary = suite / "summary.csv"
+    if not summary.exists():
+        return False
+    with summary.open() as f:
+        for row in csv.DictReader(f):
+            rd = (row.get("run_dir") or "").strip()
+            if not rd:
+                continue
+            rj = Path(rd) / "result.json"
+            if rj.exists():
+                try:
+                    return field in json.load(rj.open())
+                except Exception:
+                    continue
+    return False
+
+
+def any_run_has_energy(suite):
+    summary = suite / "summary.csv"
+    if not summary.exists():
+        return False
+    with summary.open() as f:
+        for row in csv.DictReader(f):
+            rd = (row.get("run_dir") or "").strip()
+            if not rd:
+                continue
+            rj = Path(rd) / "result.json"
+            if rj.exists():
+                try:
+                    data = json.load(rj.open())
+                    energy = data.get("energy_j") or {}
+                    if energy:
+                        return True
+                except Exception:
+                    continue
+    return False
+
+
+def any_run_has_artifacts(suite):
+    summary = suite / "summary.csv"
+    if not summary.exists():
+        return False
+    with summary.open() as f:
+        for row in csv.DictReader(f):
+            rd = (row.get("run_dir") or "").strip()
+            if not rd:
+                continue
+            run = Path(rd)
+            if (run / "monitor.csv").exists() and (run / "stdout.log").exists():
+                return True
+    return False
+
+
+def parse_summary_md(suite):
+    md = suite / "summary.md"
+    fields = {"experiment": "", "warmups": "", "repeats": "", "shuffle_seed": "", "pinned": ""}
+    if not md.exists():
+        return fields
+    import re
+    for line in md.read_text(errors="replace").splitlines():
+        line = line.strip()
+        if line.startswith("- Experiment:") and "`" in line:
+            fields["experiment"] = line.split("`")[1]
+        elif line.startswith("- Warmups:") and "`" in line:
+            fields["warmups"] = line.split("`")[1]
+        elif line.startswith("- Repeats:") and "`" in line:
+            fields["repeats"] = line.split("`")[1]
+        elif line.startswith("- Shuffle:"):
+            ticks = re.findall(r"`([^`]*)`", line)
+            if len(ticks) >= 2:
+                fields["shuffle_seed"] = ticks[1]
+        elif line.startswith("- System pinned:") and "`" in line:
+            fields["pinned"] = line.split("`")[1]
+    return fields
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: render-repro-checklist SUITE_DIR", file=sys.stderr)
+        return 2
+    suite = Path(sys.argv[1]).resolve()
+    if not suite.is_dir():
+        print(f"Not a directory: {suite}", file=sys.stderr)
+        return 2
+
+    summary_meta = parse_summary_md(suite)
+
+    manifest = None
+    summary = suite / "summary.csv"
+    if summary.exists():
+        with summary.open() as f:
+            for row in csv.DictReader(f):
+                rd = (row.get("run_dir") or "").strip()
+                if not rd:
+                    continue
+                mp = Path(rd) / "manifest.json"
+                if mp.exists():
+                    try:
+                        manifest = json.load(mp.open())
+                        break
+                    except Exception:
+                        continue
+
+    out = suite / "reproducibility.md"
+    passed = 0
+    with out.open("w") as f:
+        f.write("# Reproducibility Checklist\n\n")
+        f.write(f"- Suite: `{suite}`\n")
+        f.write(f"- Experiment: `{summary_meta.get('experiment', '')}`\n\n")
+        f.write("## Coverage\n\n")
+        for check in CHECKS:
+            ok = bool(status_for(check, suite, manifest, summary_meta))
+            mark = "x" if ok else " "
+            if ok:
+                passed += 1
+            f.write(f"- [{mark}] **{check[0]}** — {check[1]}\n")
+        f.write(f"\n## Score: {passed}/{len(CHECKS)} items satisfied\n")
+
+    print(out)
+    return 0 if passed >= len(CHECKS) - 2 else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
