@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+N="${1:-${LAB_CUDA_VECTOR_N:-16777216}}"
+SRC="$HOME/.config/lab/cuda-vector-add.cu"
+BUILD_DIR="$LAB_HOME/_benchmarks/cuda"
+BIN="$BUILD_DIR/cuda-vector-add"
+OUT="$BUILD_DIR/cuda-vector-add-${N}-$(date +%Y%m%d-%H%M%S).txt"
+
+if ! command -v nvcc >/dev/null 2>&1; then
+  printf 'nvcc not available — install CUDA toolkit or run inside lab-cuda container.\n' >&2
+  exit 127
+fi
+
+mkdir -p "$BUILD_DIR"
+nvcc -O2 "$SRC" -o "$BIN"
+"$BIN" "$N" | tee "$OUT"
+printf '\nSaved: %s\n' "$OUT"

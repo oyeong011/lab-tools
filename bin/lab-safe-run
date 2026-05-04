@@ -33,6 +33,23 @@ read_rapl_path() {
   fi
 }
 
+NVIDIA_SMI=""
+if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+  NVIDIA_SMI="nvidia-smi"
+fi
+
+read_nvidia_sample() {
+  if [ -z "$NVIDIA_SMI" ]; then
+    printf ',,,'
+    return
+  fi
+  $NVIDIA_SMI --query-gpu=temperature.gpu,power.draw,utilization.gpu,memory.used \
+    --format=csv,noheader,nounits -i 0 2>/dev/null \
+    | head -n 1 \
+    | awk -F', ' '{ printf "%s,%s,%s,%s", $1, $2, $3, $4 }' \
+    || printf ',,,'
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -114,7 +131,7 @@ fi
 cmd+=("$@")
 
 sample_monitor() {
-  local timestamp max_temp cpu_scaling load1 mem_available_kib pkg core uncore dram
+  local timestamp max_temp cpu_scaling load1 mem_available_kib pkg core uncore dram nv
   timestamp="$(date --iso-8601=seconds)"
   max_temp="$(thermal-check 999 2>/dev/null | sed -n 's/^max_temp_c=\([^ ]*\).*/\1/p' || true)"
   cpu_scaling="$(lscpu 2>/dev/null | sed -n 's/^CPU(s) scaling MHz:[[:space:]]*//p' | head -n 1)"
@@ -124,13 +141,14 @@ sample_monitor() {
   core="$(read_rapl_path "$RAPL_CORE_PATH")"
   uncore="$(read_rapl_path "$RAPL_UNCORE_PATH")"
   dram="$(read_rapl_path "$RAPL_DRAM_PATH")"
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$timestamp" "${max_temp:-}" "${cpu_scaling:-}" "${load1:-}" "${mem_available_kib:-}" "${pkg:-}" "${core:-}" "${uncore:-}" "${dram:-}"
+  nv="$(read_nvidia_sample)"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$timestamp" "${max_temp:-}" "${cpu_scaling:-}" "${load1:-}" "${mem_available_kib:-}" "${pkg:-}" "${core:-}" "${uncore:-}" "${dram:-}" "$nv"
 }
 
 monitor_loop() {
   local pid="$1"
   local temp
-  printf 'timestamp,max_temp_c,cpu_scaling_mhz_percent,load1,mem_available_kib,pkg_energy_uj,core_energy_uj,uncore_energy_uj,dram_energy_uj\n' > "$run_dir/monitor.csv"
+  printf 'timestamp,max_temp_c,cpu_scaling_mhz_percent,load1,mem_available_kib,pkg_energy_uj,core_energy_uj,uncore_energy_uj,dram_energy_uj,gpu_temp_c,gpu_power_w,gpu_util_percent,gpu_mem_used_mib\n' > "$run_dir/monitor.csv"
   while kill -0 "$pid" 2>/dev/null; do
     sample_monitor >> "$run_dir/monitor.csv"
     temp="$(tail -n 1 "$run_dir/monitor.csv" | awk -F, '{print $2}')"
@@ -227,6 +245,41 @@ if os.path.exists(monitor_path):
         except ValueError:
             pass
 
+    nvidia_energy_j = None
+    nvidia_avg_power_w = None
+    gpu_max_temp_c = None
+    if any((r.get("gpu_power_w") or "").strip() for r in rows):
+        from datetime import datetime as _dt
+        ts_w = []
+        for r in rows:
+            ts = (r.get("timestamp") or "").strip()
+            pw = (r.get("gpu_power_w") or "").strip()
+            try:
+                t_obj = _dt.fromisoformat(ts) if ts else None
+                pw_v = float(pw) if pw else None
+            except (TypeError, ValueError):
+                continue
+            if t_obj is not None and pw_v is not None:
+                ts_w.append((t_obj, pw_v))
+        if len(ts_w) >= 2:
+            integral = 0.0
+            for i in range(1, len(ts_w)):
+                dt = (ts_w[i][0] - ts_w[i - 1][0]).total_seconds()
+                integral += 0.5 * (ts_w[i][1] + ts_w[i - 1][1]) * dt
+            nvidia_energy_j = integral
+            elapsed = (ts_w[-1][0] - ts_w[0][0]).total_seconds()
+            if elapsed > 0:
+                nvidia_avg_power_w = integral / elapsed
+        for r in rows:
+            t = (r.get("gpu_temp_c") or "").strip()
+            try:
+                if t:
+                    v = float(t)
+                    if gpu_max_temp_c is None or v > gpu_max_temp_c:
+                        gpu_max_temp_c = v
+            except ValueError:
+                pass
+
 duration_s = None
 try:
     from datetime import datetime
@@ -239,6 +292,11 @@ if duration_s and duration_s > 0:
     for key, value in energy.items():
         power[key.replace("_energy_j", "_power_w")] = value / duration_s
 
+if nvidia_energy_j is not None:
+    energy["nvidia_energy_j"] = nvidia_energy_j
+if nvidia_avg_power_w is not None:
+    power["nvidia_avg_power_w"] = nvidia_avg_power_w
+
 result = {
     "started_at": started,
     "ended_at": ended,
@@ -250,6 +308,7 @@ result = {
     "thermal_runtime_abort": code == 98,
     "thermal_event_observed": throttled,
     "thermal_event_count": thermal_event_count,
+    "gpu_max_temp_c": gpu_max_temp_c,
     "system_pinned": pinned,
     "energy_j": energy,
     "avg_power_w": power,

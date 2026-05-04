@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Detect or report the lab profile for this host.
+#
+# Profile values:
+#   cpu   — no NVIDIA GPU; CPU and OpenCL benchmarks only (e.g. i7-7700 + HD 630)
+#   cuda  — NVIDIA GPU + CUDA toolkit present; CUDA benchmarks enabled
+#
+# Override with: LAB_PROFILE=cpu|cuda
+# Persistent override: ~/.config/lab/profile (one line: cpu OR cuda)
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-profile          Print the active profile (cpu|cuda)
+  lab-profile detect   Print only the auto-detected profile (ignores override)
+  lab-profile set cpu|cuda
+                       Persist profile to ~/.config/lab/profile
+  lab-profile clear    Remove the persistent override
+EOF
+}
+
+PROFILE_FILE="$HOME/.config/lab/profile"
+
+detect() {
+  if command -v nvidia-smi >/dev/null 2>&1 \
+     && nvidia-smi -L >/dev/null 2>&1 \
+     && command -v nvcc >/dev/null 2>&1; then
+    printf 'cuda'
+  else
+    printf 'cpu'
+  fi
+}
+
+active() {
+  if [ -n "${LAB_PROFILE:-}" ]; then
+    printf '%s' "$LAB_PROFILE"
+    return
+  fi
+  if [ -f "$PROFILE_FILE" ]; then
+    head -n 1 "$PROFILE_FILE" | tr -d '[:space:]'
+    return
+  fi
+  detect
+}
+
+case "${1:-show}" in
+  show) active; printf '\n' ;;
+  detect) detect; printf '\n' ;;
+  set)
+    case "${2:-}" in
+      cpu|cuda)
+        mkdir -p "$(dirname "$PROFILE_FILE")"
+        printf '%s\n' "$2" > "$PROFILE_FILE"
+        printf 'Set persistent profile: %s -> %s\n' "$2" "$PROFILE_FILE"
+        ;;
+      *) usage >&2; exit 2 ;;
+    esac
+    ;;
+  clear)
+    rm -f "$PROFILE_FILE"
+    printf 'Cleared persistent profile.\n'
+    ;;
+  -h|--help|help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

@@ -23,12 +23,17 @@ METRICS = [
     "opencl_kernel_s",
     "opencl_bandwidth_gbs",
     "gemm_gflops",
+    "cuda_kernel_s",
+    "cuda_bandwidth_gbs",
+    "cuda_gemm_gflops",
     "duration_s",
     "pkg_energy_j",
     "core_energy_j",
     "uncore_energy_j",
     "dram_energy_j",
     "pkg_power_w",
+    "nvidia_energy_j",
+    "nvidia_avg_power_w",
 ]
 
 LOWER_IS_BETTER = {
@@ -36,11 +41,13 @@ LOWER_IS_BETTER = {
     "memory_walk_mean_s",
     "sha256_mean_s",
     "opencl_kernel_s",
+    "cuda_kernel_s",
     "duration_s",
     "pkg_energy_j",
     "core_energy_j",
     "uncore_energy_j",
     "dram_energy_j",
+    "nvidia_energy_j",
 }
 
 

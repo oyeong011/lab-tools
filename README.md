@@ -1,31 +1,113 @@
 # lab-tools
 
-Local CPU / accelerator experiment tooling for this Ubuntu machine.
+Reproducibility-oriented benchmarking framework for CPU and accelerator workloads on commodity Linux. Designed for two-host operation: a *dev/methodology* host without a GPU, and a *CUDA execution* host with an NVIDIA GPU.
 
-## Install Back Into Home
+## Profiles
 
-This repository is a tracked copy of the active files. The active files live in:
+| Profile | Hardware target | What runs |
+|---|---|---|
+| `cpu`  | CPU + iGPU OpenCL only (no NVIDIA stack) | bench-cpu, bench-standard-cpu, bench-opencl, bench-opencl-gemm |
+| `cuda` | CPU + iGPU OpenCL + NVIDIA GPU + CUDA toolkit | everything in `cpu` plus bench-cuda-vector-add, bench-cuda-gemm |
 
-- `~/bin`
-- `~/.config/lab`
-- `~/notes`
-
-Use `lab-tools-sync` from the active environment to refresh this repo after edits.
-
-## Common Commands
+The profile auto-detects from `nvidia-smi` + `nvcc`. Override:
 
 ```bash
-	lab-doctor
-	lab-container-build cpu
-	lab-container-run -- bench-standard-cpu
-	bench-suite-config quick.yaml
-	bench-suite-config baseline.yaml
-	lab-index
-	lab-archive latest
-	lab-backup
+lab-profile set cuda          # persistent (writes ~/.config/lab/profile)
+lab-profile clear             # back to auto-detect
+LAB_PROFILE=cpu lab-doctor    # transient
 ```
 
-## Safety
+`lab-doctor` and `bench-suite` honor the profile — on `cpu`, CUDA tools are listed as info/optional and CUDA workloads are skipped automatically. On `cuda`, CUDA tools become required and bench-suite includes `cuda-vector` + `cuda-gemm` workloads.
 
-Runs should go through `lab-safe-run`, `monitor-run`, or `bench-suite`.
-Each run records `manifest.json`, `result.json`, `monitor.csv`, sensor snapshots, stdout, and stderr.
+## Install on a fresh host
+
+```bash
+git clone <THIS-REPO-URL> ~/lab-tools
+cd ~/lab-tools
+bash bin/lab-tools-install            # copies into ~/bin, ~/.config/lab, ~/notes
+lab-doctor                            # sanity check
+```
+
+After install, on Intel CPUs:
+
+```bash
+sudo lab-pin-system enable-rapl       # one-shot per boot for energy measurement
+```
+
+For a measurement campaign:
+
+```bash
+sudo lab-pin-system pin               # governor=performance, no_turbo=1, ASLR=0
+bench-suite-config baseline.yaml      # full suite with stats + reports
+sudo lab-pin-system restore           # back to powersave/turbo on
+```
+
+## What a suite produces
+
+Every `bench-suite` run produces a directory under `~/lab/<experiment>/suites/<id>/`:
+
+- `summary.csv` — one row per run, all metrics + duration + RAPL energy + (cuda profile) NVML energy + phase + thermal events
+- `stats.csv` — per (workload, phase=all/cold/steady, metric): n, mean, median, SD, CV%, ±1.96σ/√n, 95% bootstrap CI, MAD, outlier count, quality grade
+- `report.md` — Markdown report with results + statistics tables
+- `method.md` — paper-ready §Methodology section auto-filled from manifest.json
+- `reproducibility.md` — ACM-style artifact checklist (auto-scored against artifacts present)
+- `execution-order.csv` — randomized (workload, repeat) order with seed for reproducibility
+- per-run dirs with `manifest.json` (system snapshot + sha256 of all sources), `monitor.csv` (1–2 Hz thermal/load/RAPL/NVML samples), `result.json` (energy_j, avg_power_w, thermal events, system_pinned, gpu_max_temp_c)
+
+## Cross-host workflow
+
+```bash
+# Host A (cpu profile): build a baseline suite
+sudo lab-pin-system pin
+bench-suite-config baseline.yaml
+sudo lab-pin-system restore
+
+# Package it for Host B
+lab-handoff <suite_dir>
+# -> ~/lab/_handoffs/<experiment>-<id>-handoff-<date>.tar.zst
+
+# Transfer to Host B and re-run with CUDA workloads added
+scp ~/lab/_handoffs/*.tar.zst hostB:~/
+ssh hostB
+git clone <THIS-REPO-URL> ~/lab-tools && cd ~/lab-tools && bash bin/lab-tools-install
+lab-profile set cuda
+sudo lab-pin-system pin
+bench-suite-config baseline.yaml      # auto-includes cuda-vector + cuda-gemm
+sudo lab-pin-system restore
+
+# Compare cross-host (works on either side)
+suite-compare <hostA_suite_dir> <hostB_suite_dir> --md compare.md
+```
+
+## Statistical methods (already wired in)
+
+- Mean, median, SD, CV%, parametric ±1.96σ/√n
+- 95% bootstrap percentile CI over 10000 resamples (seed-fixed via `LAB_BOOTSTRAP_SEED`)
+- MAD-based outlier flagging (Iglewicz & Hoaglin)
+- Phase split: `cold` = first run of each workload by execution order; `steady` = rest
+- Suite A vs B: Mann-Whitney U two-sided + Cliff's δ + Romano (2006) effect-size thresholds (negligible/small/medium/large)
+
+## Container infrastructure
+
+- `~/.config/lab/containers/Containerfile.cpu` — Ubuntu 24.04 + clinfo/OpenCL/OpenBLAS/sysbench/python
+- `~/.config/lab/containers/Containerfile.cuda` — `nvidia/cuda:13.1.0-devel-ubuntu24.04` + same toolchain (Blackwell sm_120 ready)
+
+```bash
+lab-container-build cpu          # cpu profile
+lab-container-build cuda         # cuda profile
+lab-container-run -- bench-standard-cpu
+```
+
+## Editing scripts
+
+Active source-of-truth is `~/bin/` and `~/.config/lab/`. After editing, run `lab-tools-sync` to copy changes back into this repo and commit. Other hosts pull and run `lab-tools-install`.
+
+## Out of scope
+
+This framework targets CPU/iGPU + ≤8GB consumer-tier NVIDIA. It does *not* attempt to support:
+
+- Multi-GPU / >8GB workloads (no large LLM training, no H100 baselines)
+- AMD ROCm or Intel oneAPI/SYCL (stubs only)
+- Distributed/HPC measurement
+
+For workloads beyond the local hardware envelope, use `lab-handoff` to package a suite and run on cloud-by-hour GPUs (RunPod / Lambda / Vast.ai) or shared cluster resources (KISTI Nurion, NIPA AI 바우처, university GPU clusters).

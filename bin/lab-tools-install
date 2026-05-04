@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Install the lab-tools framework into the current user's $HOME.
+# Reverse of lab-tools-sync: copies from this repo into ~/bin, ~/.config/lab, ~/notes.
+# Idempotent. Safe to re-run after `git pull`.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+DRY_RUN=0
+
+usage() {
+  cat <<'EOF'
+Usage: lab-tools-install [--dry-run]
+
+Installs lab-tools into:
+  ~/bin/                        all bench/lab/* scripts
+  ~/.config/lab/                .c kernels, suite configs, container templates
+  ~/notes/                      reference docs
+
+After install, run:
+  lab-doctor                    sanity check
+  sudo lab-pin-system enable-rapl   if Intel CPU and you want energy data
+  sudo lab-pin-system pin           before measurement campaigns
+EOF
+}
+
+case "${1:-}" in
+  -h|--help|help) usage; exit 0 ;;
+  --dry-run) DRY_RUN=1 ;;
+  "") ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+if [ ! -d "$REPO_DIR/bin" ] || [ ! -d "$REPO_DIR/config" ]; then
+  printf 'Run lab-tools-install from inside the cloned lab-tools repo.\n' >&2
+  printf 'Detected REPO_DIR=%s\n' "$REPO_DIR" >&2
+  exit 2
+fi
+
+run() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf 'DRY: %s\n' "$*"
+  else
+    "$@"
+  fi
+}
+
+mkdir -p "$HOME/bin" "$HOME/.config/lab/suites" "$HOME/.config/lab/containers" "$HOME/.config/lab/templates" "$HOME/notes"
+
+installed_bin=0
+for src in "$REPO_DIR/bin/"*; do
+  [ -f "$src" ] || continue
+  name="$(basename "$src")"
+  dst="$HOME/bin/$name"
+  run install -Dm755 "$src" "$dst"
+  installed_bin=$((installed_bin + 1))
+done
+
+installed_cfg=0
+for src in "$REPO_DIR/config/"*.c; do
+  [ -f "$src" ] || continue
+  run install -Dm644 "$src" "$HOME/.config/lab/$(basename "$src")"
+  installed_cfg=$((installed_cfg + 1))
+done
+
+for sub in suites containers templates; do
+  if [ -d "$REPO_DIR/config/$sub" ]; then
+    for src in "$REPO_DIR/config/$sub/"*; do
+      [ -f "$src" ] || continue
+      run install -Dm644 "$src" "$HOME/.config/lab/$sub/$(basename "$src")"
+      installed_cfg=$((installed_cfg + 1))
+    done
+  fi
+done
+
+if [ -d "$REPO_DIR/notes" ]; then
+  for src in "$REPO_DIR/notes/"*; do
+    [ -f "$src" ] || continue
+    run install -Dm644 "$src" "$HOME/notes/$(basename "$src")"
+  done
+fi
+
+printf 'Installed %d scripts into ~/bin and %d config files into ~/.config/lab.\n' "$installed_bin" "$installed_cfg"
+if [ "$DRY_RUN" -eq 1 ]; then
+  printf 'Dry-run only. Nothing copied.\n'
+else
+  printf 'Run `lab-doctor` to verify the installation.\n'
+fi

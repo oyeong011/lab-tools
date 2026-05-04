@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+SIZE="${1:-${LAB_CUDA_GEMM_SIZE:-${LAB_GEMM_SIZE:-256}}}"
+SRC="$HOME/.config/lab/cuda-gemm.cu"
+BUILD_DIR="$LAB_HOME/_benchmarks/cuda"
+BIN="$BUILD_DIR/cuda-gemm"
+OUT="$BUILD_DIR/cuda-gemm-${SIZE}-$(date +%Y%m%d-%H%M%S).txt"
+
+if ! command -v nvcc >/dev/null 2>&1; then
+  printf 'nvcc not available — install CUDA toolkit or run inside lab-cuda container.\n' >&2
+  exit 127
+fi
+
+mkdir -p "$BUILD_DIR"
+nvcc -O2 "$SRC" -lcublas -o "$BIN"
+"$BIN" "$SIZE" | tee "$OUT"
+printf '\nSaved: %s\n' "$OUT"

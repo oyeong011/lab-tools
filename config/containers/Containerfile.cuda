@@ -1,0 +1,39 @@
+# CUDA execution container for the RTX 5060 (Blackwell, sm_120) host.
+# Build with: lab-container-build cuda
+# Run with:   lab-container-run -- bench-cuda-gemm
+FROM nvidia/cuda:13.1.0-devel-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        build-essential \
+        clinfo \
+        gcc \
+        git \
+        intel-opencl-icd \
+        libcublas-dev-13-1 \
+        libcudnn9-dev-cuda-13 \
+        libopenblas-dev \
+        make \
+        ocl-icd-opencl-dev \
+        opencl-headers \
+        python3 \
+        python3-matplotlib \
+        rsync \
+        sysbench \
+        time \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
+    && if [ -n "$existing_user" ]; then \
+        usermod -l lab -d /home/lab -m "$existing_user"; \
+      else \
+        useradd -m -u 1000 lab; \
+      fi
+USER lab
+WORKDIR /workspace
+
+ENV PATH=/home/lab/bin:/usr/local/bin:/usr/bin:/bin
+ENV CUDA_HOME=/usr/local/cuda

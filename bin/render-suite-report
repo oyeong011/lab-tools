@@ -16,10 +16,15 @@ HEADLINE_METRICS = [
     ("sysbench_events_s", "sysbench ev/s"),
     ("opencl_kernel_s", "OpenCL s"),
     ("opencl_bandwidth_gbs", "OpenCL GB/s"),
-    ("gemm_gflops", "GEMM GF/s"),
+    ("gemm_gflops", "OCL-GEMM GF/s"),
+    ("cuda_kernel_s", "CUDA s"),
+    ("cuda_bandwidth_gbs", "CUDA GB/s"),
+    ("cuda_gemm_gflops", "CUDA-GEMM GF/s"),
     ("duration_s", "Dur s"),
     ("pkg_energy_j", "Pkg J"),
     ("pkg_power_w", "Pkg W"),
+    ("nvidia_energy_j", "GPU J"),
+    ("nvidia_avg_power_w", "GPU W"),
 ]
 
 

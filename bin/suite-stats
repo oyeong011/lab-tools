@@ -30,12 +30,18 @@ METRICS = [
     "opencl_kernel_s",
     "opencl_bandwidth_gbs",
     "gemm_gflops",
+    "cuda_kernel_s",
+    "cuda_bandwidth_gbs",
+    "cuda_gemm_gflops",
     "duration_s",
     "pkg_energy_j",
     "core_energy_j",
     "uncore_energy_j",
     "dram_energy_j",
     "pkg_power_w",
+    "nvidia_energy_j",
+    "nvidia_avg_power_w",
+    "gpu_max_temp_c",
 ]
 
 

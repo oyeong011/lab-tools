@@ -7,18 +7,18 @@ warn=0
 
 check_cmd() {
   if command -v "$1" >/dev/null 2>&1; then
-    printf 'ok   command %-18s %s\n' "$1" "$(command -v "$1")"
+    printf 'ok   command %-22s %s\n' "$1" "$(command -v "$1")"
   else
-    printf 'warn command %-18s missing\n' "$1"
+    printf 'warn command %-22s missing\n' "$1"
     warn=$((warn + 1))
   fi
 }
 
 info_cmd() {
   if command -v "$1" >/dev/null 2>&1; then
-    printf 'ok   command %-18s %s\n' "$1" "$(command -v "$1")"
+    printf 'ok   command %-22s %s\n' "$1" "$(command -v "$1")"
   else
-    printf 'info command %-18s missing\n' "$1"
+    printf 'info command %-22s missing\n' "$1"
   fi
 }
 
@@ -31,12 +31,32 @@ check_file() {
   fi
 }
 
+PROFILE="$(lab-profile 2>/dev/null || printf cpu)"
+
 printf '== Lab Doctor ==\n'
 printf 'time=%s\n' "$(date --iso-8601=seconds)"
-printf 'host=%s\n\n' "$(hostname)"
+printf 'host=%s\n' "$(hostname)"
+printf 'profile=%s\n\n' "$PROFILE"
 
-printf '== Required commands ==\n'
-for cmd in lab-safe-run lab-pin-system bench-suite bench-suite-config summarize-suite suite-stats suite-compare render-suite-report render-suite-html render-method-section render-repro-checklist lab-handoff lab-plot lab-clean lab-container-build lab-container-run lab-nvidia-ready lab-manifest lab-tools-sync lab-index lab-archive lab-backup ai-accel-check hw-report thermal-check sensor-snapshot bench-stream bench-openblas bench-sysbench bench-standard-cpu clinfo gcc python3 sysbench git rsync tar sha256sum podman buildah; do
+printf '== Framework commands (all profiles) ==\n'
+for cmd in \
+  lab-safe-run lab-pin-system lab-profile lab-tools-install lab-tools-sync \
+  lab-doctor lab-manifest lab-handoff lab-index lab-archive lab-backup lab-plot lab-clean \
+  bench-suite bench-suite-config summarize-suite suite-stats suite-compare \
+  render-suite-report render-suite-html render-method-section render-repro-checklist \
+  hw-report thermal-check sensor-snapshot monitor-run \
+  lab-container-build lab-container-run \
+  ; do
+  check_cmd "$cmd"
+done
+
+printf '\n== CPU/OpenCL benchmark commands ==\n'
+for cmd in bench-cpu bench-standard-cpu bench-stream bench-openblas bench-sysbench bench-opencl bench-opencl-gemm ai-accel-check; do
+  check_cmd "$cmd"
+done
+
+printf '\n== System tools ==\n'
+for cmd in clinfo gcc python3 sysbench git rsync tar sha256sum podman buildah; do
   check_cmd "$cmd"
 done
 
@@ -47,12 +67,22 @@ else
   warn=$((warn + 1))
 fi
 
-printf '\n== Optional/future commands ==\n'
-for cmd in nvidia-smi nvcc sycl-ls ze_info rocminfo rocm-smi; do
-  info_cmd "$cmd"
-done
+printf '\n== CUDA toolchain ==\n'
+case "$PROFILE" in
+  cuda)
+    for cmd in nvidia-smi nvcc nvml-check bench-cuda-vector-add bench-cuda-gemm; do
+      check_cmd "$cmd"
+    done
+    ;;
+  *)
+    for cmd in nvidia-smi nvcc nvml-check bench-cuda-vector-add bench-cuda-gemm; do
+      info_cmd "$cmd"
+    done
+    printf 'note     profile=cpu — CUDA tools optional on this host\n'
+    ;;
+esac
 
-printf '\n== Required files ==\n'
+printf '\n== Required files (CPU profile) ==\n'
 check_file "$HOME/.config/lab/opencl-vector-add.c"
 check_file "$HOME/.config/lab/opencl-gemm.c"
 check_file "$HOME/.config/lab/stream-triad.c"
@@ -60,26 +90,33 @@ check_file "$HOME/.config/lab/openblas-gemm.c"
 check_file "$HOME/.config/lab/suites/quick.env"
 check_file "$HOME/.config/lab/suites/baseline.env"
 check_file "$HOME/.config/lab/containers/Containerfile.cpu"
-check_file "$HOME/notes/ubuntu-lab-profile.md"
-check_file "$HOME/notes/ubuntu-lab-guide.html"
 
-printf '\n== Container quick check ==\n'
-if podman image exists localhost/lab-cpu:24.04; then
+if [ "$PROFILE" = cuda ]; then
+  printf '\n== Required files (CUDA profile) ==\n'
+  check_file "$HOME/.config/lab/cuda-vector-add.cu"
+  check_file "$HOME/.config/lab/cuda-gemm.cu"
+  check_file "$HOME/.config/lab/containers/Containerfile.cuda"
+fi
+
+printf '\n== Container images ==\n'
+if podman image exists localhost/lab-cpu:24.04 2>/dev/null; then
   printf 'ok   image   localhost/lab-cpu:24.04\n'
 else
-  printf 'warn image   localhost/lab-cpu:24.04 missing; run lab-container-build cpu\n'
-  warn=$((warn + 1))
+  printf 'info image   localhost/lab-cpu:24.04 missing; build with: lab-container-build cpu\n'
+fi
+if [ "$PROFILE" = cuda ]; then
+  if podman image exists localhost/lab-cuda:24.04 2>/dev/null; then
+    printf 'ok   image   localhost/lab-cuda:24.04\n'
+  else
+    printf 'warn image   localhost/lab-cuda:24.04 missing; build with: lab-container-build cuda\n'
+    warn=$((warn + 1))
+  fi
 fi
 
 printf '\n== Temperature ==\n'
-if thermal-check; then
-  :
-else
-  printf 'warn thermal-check failed\n'
-  warn=$((warn + 1))
-fi
+thermal-check || { printf 'warn thermal-check failed\n'; warn=$((warn + 1)); }
 
-printf '\n== OpenCL quick check ==\n'
+printf '\n== OpenCL devices ==\n'
 clinfo_list="$(clinfo -l 2>/dev/null || true)"
 if printf '%s\n' "$clinfo_list" | grep -q 'Device #'; then
   printf '%s\n' "$clinfo_list"
@@ -88,11 +125,21 @@ else
   warn=$((warn + 1))
 fi
 
+if [ "$PROFILE" = cuda ]; then
+  printf '\n== NVIDIA devices ==\n'
+  if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L 2>/dev/null; then
+    :
+  else
+    printf 'warn nvidia-smi -L returned no devices on cuda profile\n'
+    warn=$((warn + 1))
+  fi
+fi
+
 printf '\n== Summary ==\n'
 if [ "$warn" -eq 0 ]; then
-  printf 'status=ok warnings=0\n'
+  printf 'status=ok profile=%s warnings=0\n' "$PROFILE"
 else
-  printf 'status=warn warnings=%s\n' "$warn"
+  printf 'status=warn profile=%s warnings=%s\n' "$PROFILE" "$warn"
 fi
 
 exit 0

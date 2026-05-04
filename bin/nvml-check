@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Quick NVIDIA / CUDA capability probe — parallel to ai-accel-check for OpenCL.
+# Prints one summary line + structured details. Exits non-zero only on hard parse error.
+set -euo pipefail
+
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+  printf 'status=missing reason=nvidia_smi_not_installed\n'
+  exit 0
+fi
+
+if ! nvidia-smi -L >/dev/null 2>&1; then
+  printf 'status=present_no_device reason=driver_loaded_no_device\n'
+  exit 0
+fi
+
+printf '== nvidia-smi -L ==\n'
+nvidia-smi -L
+
+printf '\n== Driver / CUDA runtime ==\n'
+nvidia-smi --query-gpu=driver_version,name,memory.total,compute_cap,power.limit \
+  --format=csv,noheader 2>/dev/null || true
+
+if command -v nvcc >/dev/null 2>&1; then
+  printf '\n== nvcc ==\n'
+  nvcc --version | sed -n '1,5p'
+fi
+
+printf '\n== Power / thermal sample ==\n'
+nvidia-smi --query-gpu=index,power.draw,temperature.gpu,utilization.gpu,memory.used \
+  --format=csv,noheader,nounits 2>/dev/null || true
+
+printf '\n== CDI runtime (for podman/--device=nvidia.com/gpu=all) ==\n'
+if [ -f /etc/cdi/nvidia.yaml ]; then
+  printf 'cdi=present path=/etc/cdi/nvidia.yaml\n'
+elif [ -f /var/run/cdi/nvidia.yaml ]; then
+  printf 'cdi=present path=/var/run/cdi/nvidia.yaml\n'
+else
+  printf 'cdi=absent install with: sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml\n'
+fi

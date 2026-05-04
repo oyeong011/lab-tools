@@ -23,13 +23,22 @@ declare -A WORKLOAD_CMD=(
   [standard-cpu]=bench-standard-cpu
   [opencl]=bench-opencl
   [opencl-gemm]=bench-opencl-gemm
+  [cuda-vector]=bench-cuda-vector-add
+  [cuda-gemm]=bench-cuda-gemm
 )
 declare -A WORKLOAD_LABEL=(
   [cpu]="CPU"
   [standard-cpu]="Standard CPU baseline"
   [opencl]="OpenCL"
   [opencl-gemm]="OpenCL GEMM"
+  [cuda-vector]="CUDA"
+  [cuda-gemm]="CUDA GEMM"
 )
+
+PROFILE="$(lab-profile 2>/dev/null || printf cpu)"
+if [ "${LAB_INCLUDE_CUDA:-auto}" = "1" ] || { [ "${LAB_INCLUDE_CUDA:-auto}" = "auto" ] && [ "$PROFILE" = cuda ]; }; then
+  WORKLOADS+=(cuda-vector cuda-gemm)
+fi
 
 mkdir -p "$SUITE_DIR"
 
@@ -41,6 +50,8 @@ pinned_state="$(lab-pin-system check 2>/dev/null && printf yes || printf no)"
   printf -- '- Warmups: `%s`\n' "$WARMUPS"
   printf -- '- Repeats: `%s`\n' "$REPEATS"
   printf -- '- Shuffle: `%s` (seed=`%s`)\n' "$SHUFFLE" "$SHUFFLE_SEED"
+  printf -- '- Profile: `%s`\n' "$PROFILE"
+  printf -- '- Workloads: `%s`\n' "${WORKLOADS[*]}"
   printf -- '- System pinned: `%s`\n' "$pinned_state"
   printf -- '- Started: `%s`\n' "$(date --iso-8601=seconds)"
 } > "$SUITE_DIR/summary.md"

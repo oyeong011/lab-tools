@@ -13,7 +13,7 @@ if [ ! -d "$suite_dir" ]; then
 fi
 
 csv="$suite_dir/summary.csv"
-printf 'workload,run,status,scalar_fma_mean_s,memory_walk_mean_s,sha256_mean_s,stream_triad_mb_s,openblas_gflops,sysbench_events_s,opencl_kernel_s,opencl_bandwidth_gbs,gemm_gflops,max_error,run_dir\n' > "$csv"
+printf 'workload,run,status,scalar_fma_mean_s,memory_walk_mean_s,sha256_mean_s,stream_triad_mb_s,openblas_gflops,sysbench_events_s,opencl_kernel_s,opencl_bandwidth_gbs,gemm_gflops,cuda_kernel_s,cuda_bandwidth_gbs,cuda_gemm_gflops,max_error,run_dir\n' > "$csv"
 
 status_for() {
   if grep -q '^Run complete:' "$1"; then
@@ -37,7 +37,7 @@ for log in "$suite_dir"/cpu-run-*.log; do
   memory="$(sed -n 's/^memory_walk_32m:.*mean=\([0-9.]*\)s.*/\1/p' "$log" | tail -n 1)"
   sha="$(sed -n 's/^sha256_512m:.*mean=\([0-9.]*\)s.*/\1/p' "$log" | tail -n 1)"
   run_dir="$(run_dir_for "$log")"
-  printf 'cpu,%s,%s,%s,%s,%s,,,,,,,,%s\n' "$run" "$status" "$scalar" "$memory" "$sha" "$run_dir" >> "$csv"
+  printf 'cpu,%s,%s,%s,%s,%s,,,,,,,,,,,%s\n' "$run" "$status" "$scalar" "$memory" "$sha" "$run_dir" >> "$csv"
 done
 
 for log in "$suite_dir"/standard-cpu-run-*.log; do
@@ -48,7 +48,7 @@ for log in "$suite_dir"/standard-cpu-run-*.log; do
   openblas="$(sed -n 's/^OpenBLAS GFLOP\/s: \([0-9.]*\).*/\1/p' "$log" | tail -n 1)"
   sysbench="$(sed -n 's/^[[:space:]]*events per second:[[:space:]]*\([0-9.]*\).*/\1/p' "$log" | tail -n 1)"
   run_dir="$(run_dir_for "$log")"
-  printf 'standard-cpu,%s,%s,,,,%s,%s,%s,,,,,%s\n' "$run" "$status" "$stream" "$openblas" "$sysbench" "$run_dir" >> "$csv"
+  printf 'standard-cpu,%s,%s,,,,%s,%s,%s,,,,,,,,%s\n' "$run" "$status" "$stream" "$openblas" "$sysbench" "$run_dir" >> "$csv"
 done
 
 for log in "$suite_dir"/opencl-run-*.log; do
@@ -62,7 +62,7 @@ for log in "$suite_dir"/opencl-run-*.log; do
   fi
   max_error="$(sed -n 's/^Max error: \([^ ]*\).*/\1/p' "$log" | tail -n 1)"
   run_dir="$(run_dir_for "$log")"
-  printf 'opencl-vector,%s,%s,,,,,,,%s,%s,,%s,%s\n' "$run" "$status" "$kernel" "$bandwidth" "$max_error" "$run_dir" >> "$csv"
+  printf 'opencl-vector,%s,%s,,,,,,,%s,%s,,,,,%s,%s\n' "$run" "$status" "$kernel" "$bandwidth" "$max_error" "$run_dir" >> "$csv"
 done
 
 for log in "$suite_dir"/opencl-gemm-run-*.log; do
@@ -76,7 +76,29 @@ for log in "$suite_dir"/opencl-gemm-run-*.log; do
   fi
   max_error="$(sed -n 's/^Sample max error: \([^ ]*\).*/\1/p' "$log" | tail -n 1)"
   run_dir="$(run_dir_for "$log")"
-  printf 'opencl-gemm,%s,%s,,,,,,,%s,,%s,%s,%s\n' "$run" "$status" "$kernel" "$gflops" "$max_error" "$run_dir" >> "$csv"
+  printf 'opencl-gemm,%s,%s,,,,,,,%s,,%s,,,,%s,%s\n' "$run" "$status" "$kernel" "$gflops" "$max_error" "$run_dir" >> "$csv"
+done
+
+for log in "$suite_dir"/cuda-vector-run-*.log; do
+  [ -e "$log" ] || continue
+  run="$(basename "$log" | sed -E 's/cuda-vector-run-([0-9]+)\.log/\1/')"
+  status="$(status_for "$log")"
+  kernel="$(sed -n 's/^Kernel time: \([0-9.]*\) s.*/\1/p' "$log" | tail -n 1)"
+  bandwidth="$(sed -n 's/^Device approx bandwidth: \([0-9.]*\) GB\/s.*/\1/p' "$log" | tail -n 1)"
+  max_error="$(sed -n 's/^Max error: \([^ ]*\).*/\1/p' "$log" | tail -n 1)"
+  run_dir="$(run_dir_for "$log")"
+  printf 'cuda-vector,%s,%s,,,,,,,,,,%s,%s,,%s,%s\n' "$run" "$status" "$kernel" "$bandwidth" "$max_error" "$run_dir" >> "$csv"
+done
+
+for log in "$suite_dir"/cuda-gemm-run-*.log; do
+  [ -e "$log" ] || continue
+  run="$(basename "$log" | sed -E 's/cuda-gemm-run-([0-9]+)\.log/\1/')"
+  status="$(status_for "$log")"
+  kernel="$(sed -n 's/^Kernel time: \([0-9.]*\) s.*/\1/p' "$log" | tail -n 1)"
+  gflops="$(sed -n 's/^Device approx GFLOP\/s: \([0-9.]*\).*/\1/p' "$log" | tail -n 1)"
+  max_error="$(sed -n 's/^Sample max error: \([^ ]*\).*/\1/p' "$log" | tail -n 1)"
+  run_dir="$(run_dir_for "$log")"
+  printf 'cuda-gemm,%s,%s,,,,,,,,,,%s,,%s,%s,%s\n' "$run" "$status" "$kernel" "$gflops" "$max_error" "$run_dir" >> "$csv"
 done
 
 python3 - "$csv" "$suite_dir" <<'PY'
@@ -86,7 +108,7 @@ csv_path, suite_dir = sys.argv[1], sys.argv[2]
 with open(csv_path, newline="") as f:
     rows = list(csv.DictReader(f))
 
-extra = ["duration_s", "pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j", "pkg_power_w", "phase", "thermal_event_count"]
+extra = ["duration_s", "pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j", "pkg_power_w", "nvidia_energy_j", "nvidia_avg_power_w", "gpu_max_temp_c", "phase", "thermal_event_count"]
 fieldnames = list(rows[0].keys()) if rows else []
 for col in extra:
     if col not in fieldnames:
@@ -134,12 +156,16 @@ for row in rows:
     if data.get("duration_s") is not None:
         row["duration_s"] = data["duration_s"]
     energy = data.get("energy_j") or {}
-    for k in ("pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j"):
+    for k in ("pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j", "nvidia_energy_j"):
         if k in energy:
             row[k] = energy[k]
     power = data.get("avg_power_w") or {}
     if "pkg_power_w" in power:
         row["pkg_power_w"] = power["pkg_power_w"]
+    if "nvidia_avg_power_w" in power:
+        row["nvidia_avg_power_w"] = power["nvidia_avg_power_w"]
+    if data.get("gpu_max_temp_c") is not None:
+        row["gpu_max_temp_c"] = data["gpu_max_temp_c"]
     if data.get("thermal_event_count") is not None:
         row["thermal_event_count"] = data["thermal_event_count"]
 
