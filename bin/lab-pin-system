@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_FILE="${LAB_PIN_STATE:-/var/tmp/lab-pin-state.json}"
+RAPL_FILES=(/sys/class/powercap/intel-rapl:*/energy_uj)
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-pin-system status       Show current pinning state (no sudo)
+  lab-pin-system pin          Pin governor/turbo/ASLR + drop caches (sudo)
+  lab-pin-system restore      Restore pre-pin state from STATE_FILE (sudo)
+  lab-pin-system enable-rapl  Loosen RAPL energy_uj perms for this boot (sudo)
+  lab-pin-system check        Exit 0 if pinned to expected values, 1 otherwise
+
+Environment:
+  LAB_PIN_SMT=off|skip   Disable SMT during pin (default: skip)
+  LAB_PIN_STATE          Path to JSON state file (default: /var/tmp/lab-pin-state.json)
+
+Pinned values (research-grade, per Mytkowicz et al. ASPLOS'09 / Touzeau):
+  scaling_governor       = performance
+  intel_pstate/no_turbo  = 1
+  randomize_va_space     = 0
+  vm/drop_caches         = 3 (one-shot on pin only)
+  smt/control            = off (only if LAB_PIN_SMT=off)
+EOF
+}
+
+require_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    if sudo -n true 2>/dev/null; then
+      exec sudo -E "$0" "$@"
+    fi
+    printf 'This subcommand needs root. Re-run with sudo.\n' >&2
+    exit 2
+  fi
+}
+
+read_governor_all() {
+  for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    [ -e "$f" ] || continue
+    printf '%s=%s\n' "$f" "$(cat "$f" 2>/dev/null || printf unknown)"
+  done
+}
+
+read_first() {
+  local path="$1"
+  if [ -e "$path" ]; then
+    cat "$path" 2>/dev/null || printf unavailable
+  else
+    printf absent
+  fi
+}
+
+cmd_status() {
+  printf 'governor (cpu0)         : %s\n' "$(read_first /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)"
+  printf 'no_turbo                : %s\n' "$(read_first /sys/devices/system/cpu/intel_pstate/no_turbo)"
+  printf 'randomize_va_space      : %s\n' "$(read_first /proc/sys/kernel/randomize_va_space)"
+  printf 'smt/control             : %s\n' "$(read_first /sys/devices/system/cpu/smt/control)"
+  printf 'rapl readable as user   : '
+  local any_readable=0
+  for f in "${RAPL_FILES[@]}"; do
+    [ -e "$f" ] || continue
+    if [ -r "$f" ]; then any_readable=1; fi
+  done
+  if [ "$any_readable" -eq 1 ]; then printf 'yes\n'; else printf 'no (run: lab-pin-system enable-rapl)\n'; fi
+  printf 'state file              : '
+  if [ -f "$STATE_FILE" ]; then printf '%s (pinned earlier)\n' "$STATE_FILE"; else printf '%s (not present)\n' "$STATE_FILE"; fi
+}
+
+cmd_check() {
+  local ok=1
+  [ "$(read_first /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" = performance ] || ok=0
+  [ "$(read_first /sys/devices/system/cpu/intel_pstate/no_turbo)" = 1 ] || ok=0
+  [ "$(read_first /proc/sys/kernel/randomize_va_space)" = 0 ] || ok=0
+  if [ "$ok" -eq 1 ]; then exit 0; else exit 1; fi
+}
+
+cmd_pin() {
+  require_root "$@"
+
+  python3 - "$STATE_FILE" <<'PY'
+import json, os, sys, glob
+
+state_file = sys.argv[1]
+state = {"governors": {}, "no_turbo": None, "aslr": None, "smt": None}
+
+for path in sorted(glob.glob("/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor")):
+    try:
+        state["governors"][path] = open(path).read().strip()
+    except OSError:
+        pass
+
+for key, path in [
+    ("no_turbo", "/sys/devices/system/cpu/intel_pstate/no_turbo"),
+    ("aslr", "/proc/sys/kernel/randomize_va_space"),
+    ("smt", "/sys/devices/system/cpu/smt/control"),
+]:
+    try:
+        state[key] = open(path).read().strip()
+    except OSError:
+        state[key] = None
+
+os.makedirs(os.path.dirname(state_file), exist_ok=True)
+with open(state_file, "w") as f:
+    json.dump(state, f, indent=2, sort_keys=True)
+print(f"Saved pre-pin state: {state_file}")
+PY
+
+  for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    [ -e "$f" ] || continue
+    printf 'performance' > "$f" 2>/dev/null || printf 'warn: failed to set %s\n' "$f" >&2
+  done
+
+  if [ -e /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
+    printf '1' > /sys/devices/system/cpu/intel_pstate/no_turbo
+  fi
+
+  printf '0' > /proc/sys/kernel/randomize_va_space
+
+  if [ "${LAB_PIN_SMT:-skip}" = off ] && [ -w /sys/devices/system/cpu/smt/control ]; then
+    printf 'off' > /sys/devices/system/cpu/smt/control
+  fi
+
+  sync
+  printf '3' > /proc/sys/vm/drop_caches
+
+  for f in "${RAPL_FILES[@]}"; do
+    [ -e "$f" ] || continue
+    chmod a+r "$f" 2>/dev/null || true
+  done
+
+  printf 'Pinned. Run lab-pin-system status to verify.\n'
+}
+
+cmd_restore() {
+  require_root "$@"
+  if [ ! -f "$STATE_FILE" ]; then
+    printf 'No state file at %s. Nothing to restore.\n' "$STATE_FILE" >&2
+    exit 2
+  fi
+
+  python3 - "$STATE_FILE" <<'PY'
+import json, sys
+
+state = json.load(open(sys.argv[1]))
+
+for path, value in state.get("governors", {}).items():
+    try:
+        open(path, "w").write(value)
+    except OSError as e:
+        print(f"warn: failed to restore {path}: {e}")
+
+for key, path in [
+    ("no_turbo", "/sys/devices/system/cpu/intel_pstate/no_turbo"),
+    ("aslr", "/proc/sys/kernel/randomize_va_space"),
+    ("smt", "/sys/devices/system/cpu/smt/control"),
+]:
+    value = state.get(key)
+    if value is None:
+        continue
+    try:
+        open(path, "w").write(value)
+    except OSError as e:
+        print(f"warn: failed to restore {path}: {e}")
+
+print("Restored.")
+PY
+
+  rm -f "$STATE_FILE"
+}
+
+cmd_enable_rapl() {
+  require_root "$@"
+  local count=0
+  for f in "${RAPL_FILES[@]}"; do
+    [ -e "$f" ] || continue
+    chmod a+r "$f" && count=$((count + 1)) || true
+  done
+  printf 'Enabled user-readable RAPL energy_uj on %d files (resets at reboot).\n' "$count"
+}
+
+case "${1:-status}" in
+  status) cmd_status ;;
+  check) cmd_check ;;
+  pin) shift; cmd_pin "$@" ;;
+  restore) shift; cmd_restore "$@" ;;
+  enable-rapl) shift; cmd_enable_rapl "$@" ;;
+  -h|--help|help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

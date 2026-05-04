@@ -8,6 +8,31 @@ MAX_TEMP_C="${LAB_MAX_TEMP_C:-85}"
 MONITOR_INTERVAL="${LAB_MONITOR_INTERVAL:-2}"
 PATH="$HOME/bin:$PATH"
 
+RAPL_PKG_PATH=""
+RAPL_CORE_PATH=""
+RAPL_UNCORE_PATH=""
+RAPL_DRAM_PATH=""
+for _d in /sys/class/powercap/intel-rapl:* /sys/class/powercap/intel-rapl:*:*; do
+  [ -d "$_d" ] || continue
+  _n="$(cat "$_d/name" 2>/dev/null || true)"
+  _e="$_d/energy_uj"
+  [ -r "$_e" ] || continue
+  case "$_n" in
+    package-0) RAPL_PKG_PATH="$_e" ;;
+    core)      RAPL_CORE_PATH="$_e" ;;
+    uncore)    RAPL_UNCORE_PATH="$_e" ;;
+    dram)      RAPL_DRAM_PATH="$_e" ;;
+  esac
+done
+unset _d _n _e
+
+read_rapl_path() {
+  local path="$1"
+  if [ -n "$path" ] && [ -r "$path" ]; then
+    cat "$path" 2>/dev/null || true
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -89,19 +114,23 @@ fi
 cmd+=("$@")
 
 sample_monitor() {
-  local timestamp max_temp cpu_scaling load1 mem_available_kib
+  local timestamp max_temp cpu_scaling load1 mem_available_kib pkg core uncore dram
   timestamp="$(date --iso-8601=seconds)"
   max_temp="$(thermal-check 999 2>/dev/null | sed -n 's/^max_temp_c=\([^ ]*\).*/\1/p' || true)"
   cpu_scaling="$(lscpu 2>/dev/null | sed -n 's/^CPU(s) scaling MHz:[[:space:]]*//p' | head -n 1)"
   load1="$(awk '{print $1}' /proc/loadavg 2>/dev/null || true)"
   mem_available_kib="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || true)"
-  printf '%s,%s,%s,%s,%s\n' "$timestamp" "${max_temp:-}" "${cpu_scaling:-}" "${load1:-}" "${mem_available_kib:-}"
+  pkg="$(read_rapl_path "$RAPL_PKG_PATH")"
+  core="$(read_rapl_path "$RAPL_CORE_PATH")"
+  uncore="$(read_rapl_path "$RAPL_UNCORE_PATH")"
+  dram="$(read_rapl_path "$RAPL_DRAM_PATH")"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$timestamp" "${max_temp:-}" "${cpu_scaling:-}" "${load1:-}" "${mem_available_kib:-}" "${pkg:-}" "${core:-}" "${uncore:-}" "${dram:-}"
 }
 
 monitor_loop() {
   local pid="$1"
   local temp
-  printf 'timestamp,max_temp_c,cpu_scaling_mhz_percent,load1,mem_available_kib\n' > "$run_dir/monitor.csv"
+  printf 'timestamp,max_temp_c,cpu_scaling_mhz_percent,load1,mem_available_kib,pkg_energy_uj,core_energy_uj,uncore_energy_uj,dram_energy_uj\n' > "$run_dir/monitor.csv"
   while kill -0 "$pid" 2>/dev/null; do
     sample_monitor >> "$run_dir/monitor.csv"
     temp="$(tail -n 1 "$run_dir/monitor.csv" | awk -F, '{print $2}')"
@@ -150,19 +179,79 @@ if [ -f "$run_dir/failure-reason.txt" ]; then
 else
   printf '%s\n' "$reason" > "$run_dir/failure-reason.txt"
 fi
-python3 - "$run_dir" "$started_at" "$ended_at" "$status" "$reason" <<'PY'
-import json, sys
-run_dir, started, ended, status, reason = sys.argv[1:]
+pinned="unknown"
+if command -v lab-pin-system >/dev/null 2>&1; then
+  if lab-pin-system check 2>/dev/null; then pinned="yes"; else pinned="no"; fi
+fi
+
+python3 - "$run_dir" "$started_at" "$ended_at" "$status" "$reason" "$pinned" <<'PY'
+import csv, json, os, sys
+
+run_dir, started, ended, status, reason, pinned = sys.argv[1:]
 code = int(status)
-open(f"{run_dir}/result.json", "w").write(json.dumps({
-  "started_at": started,
-  "ended_at": ended,
-  "exit_code": code,
-  "status": "ok" if code == 0 else "failed",
-  "failure_reason": reason,
-  "timeout": code == 124,
-  "thermal_runtime_abort": code == 98,
-}, indent=2, sort_keys=True) + "\n")
+
+energy = {}
+throttled = False
+monitor_path = os.path.join(run_dir, "monitor.csv")
+if os.path.exists(monitor_path):
+    try:
+        with open(monitor_path) as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        rows = []
+    for col, key in [
+        ("pkg_energy_uj", "pkg_energy_j"),
+        ("core_energy_uj", "core_energy_j"),
+        ("uncore_energy_uj", "uncore_energy_j"),
+        ("dram_energy_uj", "dram_energy_j"),
+    ]:
+        vals = []
+        for r in rows:
+            v = (r.get(col) or "").strip()
+            if v.isdigit():
+                vals.append(int(v))
+        if len(vals) < 2:
+            continue
+        delta_uj = vals[-1] - vals[0]
+        if delta_uj < 0:
+            continue
+        energy[key] = delta_uj / 1e6
+    for r in rows:
+        t = (r.get("max_temp_c") or "").strip()
+        try:
+            if t and float(t) >= 90.0:
+                throttled = True
+                break
+        except ValueError:
+            pass
+
+duration_s = None
+try:
+    from datetime import datetime
+    duration_s = (datetime.fromisoformat(ended) - datetime.fromisoformat(started)).total_seconds()
+except Exception:
+    pass
+
+power = {}
+if duration_s and duration_s > 0:
+    for key, value in energy.items():
+        power[key.replace("_energy_j", "_power_w")] = value / duration_s
+
+result = {
+    "started_at": started,
+    "ended_at": ended,
+    "duration_s": duration_s,
+    "exit_code": code,
+    "status": "ok" if code == 0 else "failed",
+    "failure_reason": reason,
+    "timeout": code == 124,
+    "thermal_runtime_abort": code == 98,
+    "thermal_event_observed": throttled,
+    "system_pinned": pinned,
+    "energy_j": energy,
+    "avg_power_w": power,
+}
+open(f"{run_dir}/result.json", "w").write(json.dumps(result, indent=2, sort_keys=True) + "\n")
 PY
 
 if [ "$status" -eq 0 ]; then

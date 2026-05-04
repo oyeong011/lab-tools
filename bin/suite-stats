@@ -35,6 +35,12 @@ def main():
         "opencl_kernel_s",
         "opencl_bandwidth_gbs",
         "gemm_gflops",
+        "duration_s",
+        "pkg_energy_j",
+        "core_energy_j",
+        "uncore_energy_j",
+        "dram_energy_j",
+        "pkg_power_w",
     ]
     grouped = defaultdict(lambda: defaultdict(list))
     for row in rows:

@@ -36,7 +36,7 @@ printf 'time=%s\n' "$(date --iso-8601=seconds)"
 printf 'host=%s\n\n' "$(hostname)"
 
 printf '== Required commands ==\n'
-for cmd in lab-safe-run bench-suite bench-suite-config summarize-suite suite-stats render-suite-report render-suite-html lab-plot lab-clean lab-container-build lab-container-run lab-nvidia-ready lab-manifest lab-tools-sync lab-index lab-archive lab-backup thermal-check sensor-snapshot bench-stream bench-openblas bench-sysbench bench-standard-cpu clinfo gcc python3 sysbench git rsync tar sha256sum podman buildah; do
+for cmd in lab-safe-run lab-pin-system bench-suite bench-suite-config summarize-suite suite-stats suite-compare render-suite-report render-suite-html lab-plot lab-clean lab-container-build lab-container-run lab-nvidia-ready lab-manifest lab-tools-sync lab-index lab-archive lab-backup ai-accel-check hw-report thermal-check sensor-snapshot bench-stream bench-openblas bench-sysbench bench-standard-cpu clinfo gcc python3 sysbench git rsync tar sha256sum podman buildah; do
   check_cmd "$cmd"
 done
 

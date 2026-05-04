@@ -79,4 +79,40 @@ for log in "$suite_dir"/opencl-gemm-run-*.log; do
   printf 'opencl-gemm,%s,%s,,,,,,,%s,,%s,%s,%s\n' "$run" "$status" "$kernel" "$gflops" "$max_error" "$run_dir" >> "$csv"
 done
 
+python3 - "$csv" <<'PY'
+import csv, json, os, sys
+csv_path = sys.argv[1]
+with open(csv_path, newline="") as f:
+    rows = list(csv.DictReader(f))
+extra = ["duration_s", "pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j", "pkg_power_w"]
+fieldnames = list(rows[0].keys()) if rows else []
+for col in extra:
+    if col not in fieldnames:
+        fieldnames.append(col)
+for row in rows:
+    rd = (row.get("run_dir") or "").strip()
+    if not rd:
+        continue
+    rj = os.path.join(rd, "result.json")
+    if not os.path.exists(rj):
+        continue
+    try:
+        data = json.load(open(rj))
+    except Exception:
+        continue
+    if data.get("duration_s") is not None:
+        row["duration_s"] = data["duration_s"]
+    energy = data.get("energy_j") or {}
+    for k in ("pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j"):
+        if k in energy:
+            row[k] = energy[k]
+    power = data.get("avg_power_w") or {}
+    if "pkg_power_w" in power:
+        row["pkg_power_w"] = power["pkg_power_w"]
+with open(csv_path, "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=fieldnames)
+    w.writeheader()
+    w.writerows(rows)
+PY
+
 printf '%s\n' "$csv"

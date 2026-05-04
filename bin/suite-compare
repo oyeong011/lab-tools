@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""Compare two benchmark suites with non-parametric statistics.
+
+Outputs Mann-Whitney U p-values and Cliff's delta effect size — robust to the
+small-n, non-normal distributions typical of consumer-hardware benchmarks.
+"""
+import argparse
+import csv
+import math
+import statistics
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+
+METRICS = [
+    "scalar_fma_mean_s",
+    "memory_walk_mean_s",
+    "sha256_mean_s",
+    "stream_triad_mb_s",
+    "openblas_gflops",
+    "sysbench_events_s",
+    "opencl_kernel_s",
+    "opencl_bandwidth_gbs",
+    "gemm_gflops",
+    "duration_s",
+    "pkg_energy_j",
+    "core_energy_j",
+    "uncore_energy_j",
+    "dram_energy_j",
+    "pkg_power_w",
+]
+
+LOWER_IS_BETTER = {
+    "scalar_fma_mean_s",
+    "memory_walk_mean_s",
+    "sha256_mean_s",
+    "opencl_kernel_s",
+    "duration_s",
+    "pkg_energy_j",
+    "core_energy_j",
+    "uncore_energy_j",
+    "dram_energy_j",
+}
+
+
+def load_suite(suite_dir: Path):
+    src = suite_dir / "summary.csv"
+    if not src.exists():
+        raise SystemExit(f"summary.csv not found in {suite_dir}")
+    grouped = defaultdict(lambda: defaultdict(list))
+    with src.open(newline="") as f:
+        for row in csv.DictReader(f):
+            if row.get("status") != "ok":
+                continue
+            wl = row.get("workload", "")
+            for metric in METRICS:
+                v = row.get(metric, "")
+                try:
+                    val = float(v) if v else None
+                except ValueError:
+                    val = None
+                if val is not None:
+                    grouped[wl][metric].append(val)
+    return grouped
+
+
+def cliffs_delta(a, b):
+    if not a or not b:
+        return 0.0
+    gt = sum(1 for x in a for y in b if x > y)
+    lt = sum(1 for x in a for y in b if x < y)
+    return (gt - lt) / (len(a) * len(b))
+
+
+def magnitude(delta):
+    d = abs(delta)
+    if d < 0.147:
+        return "negligible"
+    if d < 0.33:
+        return "small"
+    if d < 0.474:
+        return "medium"
+    return "large"
+
+
+def mann_whitney_p(a, b):
+    try:
+        from scipy.stats import mannwhitneyu
+        if len(a) < 2 or len(b) < 2:
+            return None, "insufficient_n"
+        result = mannwhitneyu(a, b, alternative="two-sided")
+        return float(result.pvalue), "mannwhitneyu_two_sided"
+    except ImportError:
+        return None, "scipy_unavailable"
+
+
+def verdict(p, delta, alpha):
+    if p is None:
+        return "indeterminate"
+    if p >= alpha:
+        return "ns"
+    mag = magnitude(delta)
+    if mag == "negligible":
+        return "stat_sig_negligible"
+    return "significant"
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("suite_a", help="baseline suite directory")
+    parser.add_argument("suite_b", help="comparison suite directory")
+    parser.add_argument("--alpha", type=float, default=0.05)
+    parser.add_argument("--out", help="output CSV path (default: <suite_b>/compare-vs-<a-id>.csv)")
+    parser.add_argument("--md", help="also write markdown table to this path")
+    args = parser.parse_args()
+
+    a_dir = Path(args.suite_a).resolve()
+    b_dir = Path(args.suite_b).resolve()
+    a = load_suite(a_dir)
+    b = load_suite(b_dir)
+
+    if args.out:
+        out_path = Path(args.out)
+    else:
+        out_path = b_dir / f"compare-vs-{a_dir.name}.csv"
+
+    rows = []
+    workloads = sorted(set(a) | set(b))
+    for wl in workloads:
+        metrics = sorted(set(a.get(wl, {})) | set(b.get(wl, {})))
+        for metric in metrics:
+            xs = a.get(wl, {}).get(metric, [])
+            ys = b.get(wl, {}).get(metric, [])
+            if not xs or not ys:
+                continue
+            n_a, n_b = len(xs), len(ys)
+            mean_a, mean_b = statistics.fmean(xs), statistics.fmean(ys)
+            med_a, med_b = statistics.median(xs), statistics.median(ys)
+            diff_pct = ((mean_b - mean_a) / mean_a * 100.0) if mean_a else float("nan")
+            p, p_method = mann_whitney_p(xs, ys)
+            delta = cliffs_delta(xs, ys)
+            mag = magnitude(delta)
+            v = verdict(p, delta, args.alpha)
+            improved = ""
+            if p is not None and p < args.alpha and mag != "negligible":
+                if metric in LOWER_IS_BETTER:
+                    improved = "B faster" if mean_b < mean_a else "A faster"
+                else:
+                    improved = "B higher" if mean_b > mean_a else "A higher"
+            rows.append({
+                "workload": wl,
+                "metric": metric,
+                "n_a": n_a, "n_b": n_b,
+                "mean_a": f"{mean_a:.6g}", "mean_b": f"{mean_b:.6g}",
+                "median_a": f"{med_a:.6g}", "median_b": f"{med_b:.6g}",
+                "mean_diff_pct": f"{diff_pct:+.2f}",
+                "p_value": "" if p is None else f"{p:.4g}",
+                "p_method": p_method,
+                "cliffs_delta": f"{delta:+.3f}",
+                "magnitude": mag,
+                "verdict": v,
+                "direction": improved,
+            })
+
+    fields = ["workload", "metric", "n_a", "n_b", "mean_a", "mean_b",
+              "median_a", "median_b", "mean_diff_pct", "p_value", "p_method",
+              "cliffs_delta", "magnitude", "verdict", "direction"]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(rows)
+
+    if args.md:
+        md_path = Path(args.md)
+        with md_path.open("w") as f:
+            f.write(f"# Suite comparison\n\n")
+            f.write(f"- A (baseline): `{a_dir}`\n")
+            f.write(f"- B: `{b_dir}`\n")
+            f.write(f"- Alpha: {args.alpha}\n")
+            f.write(f"- Test: Mann-Whitney U (two-sided), Cliff's delta (Romano 2006 thresholds)\n\n")
+            f.write("| Workload | Metric | n_A | n_B | mean_A | mean_B | Δ% | p | δ | mag | verdict |\n")
+            f.write("|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|\n")
+            for r in rows:
+                f.write("| {workload} | {metric} | {n_a} | {n_b} | {mean_a} | {mean_b} | {mean_diff_pct} | {p_value} | {cliffs_delta} | {magnitude} | {verdict} {direction} |\n".format(**r))
+
+    print(out_path)
+    if args.md:
+        print(args.md)
+    sig = sum(1 for r in rows if r["verdict"] == "significant")
+    print(f"compared={len(rows)} significant={sig}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -65,6 +65,8 @@ allowed = {
     "OMP_NUM_THREADS",
     "LAB_CPUSET",
     "LAB_TIMEOUT",
+    "LAB_SHUFFLE",
+    "LAB_SHUFFLE_SEED",
 }
 
 for key in sorted(env):
