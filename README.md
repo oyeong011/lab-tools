@@ -78,6 +78,9 @@ Google Drive as long as the sidecar is kept with the bundle.
 `lab-acceptance-stage` copies the latest passing bundle per matrix target,
 writes `STAGE-MANIFEST.json`, and leaves a folder that can be uploaded to
 Google Drive or copied to USB without dragging along stale bundles.
+`lab-remote-acceptance` also installs PyYAML in the remote user's Python
+environment when needed, because YAML parsing is required before acceptance can
+run.
 
 RTX host smoke and UVM mechanism profiling:
 

@@ -546,6 +546,7 @@ class LabToolsSmokeTests(unittest.TestCase):
         self.assertIn("hashlib", handoff)
         self.assertNotIn("sha256sum", handoff)
         self.assertIn('PATH="$SCRIPT_DIR:$HOME/bin:$PATH"', remote)
+        self.assertIn("python3 -m pip install --user PyYAML", remote)
 
     def test_summary_stats_and_validation_on_fixture_suite(self):
         with tempfile.TemporaryDirectory() as td:

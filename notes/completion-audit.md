@@ -44,6 +44,7 @@ covering:
 | Missing-host command generation | `lab-acceptance-matrix --next-commands` | Prints direct and SSH collection commands for each missing target | Ready |
 | Drive/USB bundle staging | `bin/lab-acceptance-stage` | Copies latest passing bundle per matrix target plus `.sha256`, writes `STAGE-MANIFEST.json`, and supports strict full-matrix gating | Ready |
 | SSH automation | `bin/lab-remote-acceptance` | Fresh clone remote dry-run passes; actual run requires SSH target | Ready |
+| Remote YAML dependency bootstrap | `bin/lab-remote-acceptance` | Remote script installs user-level PyYAML when `import yaml` fails | Ready |
 | Suite handoff | `bin/lab-handoff` | Includes acceptance tools; uses Python SHA256; test opens produced tarball | Done |
 | GitHub push | `origin/main` | Verify with `git status --short --branch` and matching `git rev-parse HEAD origin/main` | Done |
 | CI gate | `.github/workflows/ci.yml` | Verify latest run with `gh run list --repo oyeong011/lab-tools --branch main --limit 1` | Done |

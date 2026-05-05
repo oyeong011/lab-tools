@@ -113,6 +113,8 @@ lab-acceptance-stage --out ~/lab/_drive_stage/lab-acceptance-bundles
 ```
 
 이 명령이 `complete=yes`를 출력해야 M1/M4, Intel iGPU, RTX 5060, RTX 5080 전체가 통과한 것입니다.
+`lab-remote-acceptance`는 원격에서 `python3`와 `git`을 요구하며, PyYAML이
+없으면 `python3 -m pip install --user PyYAML`을 원격 사용자 계정에 설치합니다.
 
 ## 2. 캠페인 산출물
 

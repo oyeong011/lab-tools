@@ -38,6 +38,9 @@ Usage:
 Connects to SSH_TARGET, clones or updates lab-tools, installs it into that
 remote user's home directory, runs lab-acceptance-collect, copies the generated
 acceptance bundle back, and verifies the copied bundle locally.
+The remote script installs PyYAML with `python3 -m pip install --user PyYAML`
+when Python cannot import yaml. Set LAB_REMOTE_SKIP_PIP=1 on the remote host to
+skip that step.
 
 Example:
   lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile
@@ -202,6 +205,10 @@ else
   git clone "$repo_url" "$repo_dir"
 fi
 cd "$repo_dir"
+command -v python3 >/dev/null 2>&1 || { printf 'error: python3 not found on remote host\n' >&2; exit 127; }
+if [ "${LAB_REMOTE_SKIP_PIP:-0}" != 1 ] && ! python3 -c 'import yaml' >/dev/null 2>&1; then
+  python3 -m pip install --user PyYAML
+fi
 bash bin/lab-tools-install
 export PATH="$HOME/bin:$PATH"
 lab-acceptance-collect "$@"
