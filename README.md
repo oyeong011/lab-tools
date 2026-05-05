@@ -57,6 +57,7 @@ Host acceptance artifact:
 lab-host-acceptance                 # readiness logs under ~/lab/_acceptance
 lab-host-acceptance --run           # also run host-specific smoke benchmark
 lab-host-acceptance --run --uvm-profile   # CUDA hosts: also capture a small Nsight UVM profile
+lab-acceptance-verify <acceptance_dir> --expect-profile cuda --require-run --require-uvm-profile
 ```
 
 RTX host smoke and UVM mechanism profiling:
@@ -106,6 +107,7 @@ bash bin/lab-tools-install            # copies into ~/bin, ~/.config/lab, ~/note
 export PATH="$HOME/bin:$PATH"         # if ~/bin is not already in your shell PATH
 lab-doctor                            # sanity check
 lab-host-acceptance                   # reproducible host readiness artifact
+lab-acceptance-verify ~/lab/_acceptance/<dir>
 ```
 
 After install, on Intel CPUs:

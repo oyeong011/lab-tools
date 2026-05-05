@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Validate a lab-host-acceptance artifact."""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+COMMON_STEPS = {
+    "profile",
+    "doctor",
+    "matrix-validate",
+    "baseline-config",
+    "pipeline-cpu-plan",
+}
+
+PROFILE_STEPS = {
+    "cuda": {
+        "rtx-smoke-dry",
+        "forest-uvm-config",
+        "memory-kernels-config",
+        "memory-kernels-sweep-plan",
+    },
+    "apple": {"apple-smoke-dry"},
+    "cpu": {"cpu-quick-config"},
+}
+
+
+def fail(message):
+    print(f"error: {message}", file=sys.stderr)
+    return 1
+
+
+def load_artifact(path):
+    p = Path(path)
+    if p.is_dir():
+        json_path = p / "acceptance.json"
+        root = p
+    else:
+        json_path = p
+        root = p.parent
+    if not json_path.exists():
+        raise FileNotFoundError(f"acceptance.json not found: {json_path}")
+    return json.loads(json_path.read_text()), root, json_path
+
+
+def log_exists(root, value):
+    if not value:
+        return False
+    p = Path(value)
+    if p.exists():
+        return True
+    return (root / p.name).exists() or (root / value).exists()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("artifact", help="Acceptance directory or acceptance.json")
+    parser.add_argument("--expect-profile", choices=["cpu", "cuda", "apple", "cluster"])
+    parser.add_argument("--require-run", action="store_true")
+    parser.add_argument("--require-uvm-profile", action="store_true")
+    args = parser.parse_args()
+
+    try:
+        data, root, json_path = load_artifact(args.artifact)
+    except Exception as exc:
+        return fail(str(exc))
+
+    errors = []
+    if data.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    profile = data.get("profile")
+    if args.expect_profile and profile != args.expect_profile:
+        errors.append(f"profile={profile!r}, expected {args.expect_profile!r}")
+    if data.get("status") != "ok":
+        errors.append(f"status is not ok: {data.get('status')!r}")
+    if int(data.get("failures") or 0) != 0:
+        errors.append(f"failures is not zero: {data.get('failures')!r}")
+
+    steps = data.get("steps")
+    if not isinstance(steps, list):
+        errors.append("steps must be a list")
+        steps = []
+    by_name = {str(step.get("name")): step for step in steps if isinstance(step, dict)}
+
+    required = set(COMMON_STEPS)
+    required.update(PROFILE_STEPS.get(profile, set()))
+    if profile == "cuda" and args.require_run:
+        required.add("rtx-smoke-run")
+    if profile == "cuda" and args.require_uvm_profile:
+        required.add("uvm-profile-small")
+    if profile == "apple" and args.require_run:
+        required.add("apple-smoke-run")
+
+    missing = sorted(required - set(by_name))
+    if missing:
+        errors.append("missing steps: " + ", ".join(missing))
+
+    for name, step in sorted(by_name.items()):
+        if step.get("status") != "ok":
+            errors.append(f"step {name} status={step.get('status')!r}")
+        try:
+            rc = int(step.get("exit_code"))
+        except (TypeError, ValueError):
+            errors.append(f"step {name} has invalid exit_code={step.get('exit_code')!r}")
+            rc = None
+        if rc not in (None, 0):
+            errors.append(f"step {name} exit_code={rc}")
+        if not log_exists(root, step.get("log", "")):
+            errors.append(f"step {name} log missing: {step.get('log', '')}")
+
+    if errors:
+        for err in errors:
+            print(f"error: {err}", file=sys.stderr)
+        return 1
+
+    print(f"ok acceptance {json_path} profile={profile} steps={len(steps)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

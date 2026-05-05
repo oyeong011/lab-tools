@@ -98,6 +98,30 @@ class LabToolsSmokeTests(unittest.TestCase):
         out = self.run_cmd(["bin/lab-host-acceptance", "--dry-run"]).stdout
         self.assertIn("Acceptance dry-run", out)
         self.assertIn("doctor", out)
+        with tempfile.TemporaryDirectory() as td:
+            artifact = Path(td)
+            for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "rtx-smoke-dry", "forest-uvm-config", "memory-kernels-config", "memory-kernels-sweep-plan", "rtx-smoke-run", "uvm-profile-small"]:
+                (artifact / f"{name}.log").write_text("ok\n")
+            steps = [
+                {"name": name, "status": "ok", "exit_code": "0", "log": f"{name}.log", "command": name}
+                for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "rtx-smoke-dry", "forest-uvm-config", "memory-kernels-config", "memory-kernels-sweep-plan", "rtx-smoke-run", "uvm-profile-small"]
+            ]
+            (artifact / "acceptance.json").write_text(json.dumps({
+                "schema_version": 1,
+                "profile": "cuda",
+                "status": "ok",
+                "failures": 0,
+                "steps": steps,
+            }))
+            out = self.run_cmd([
+                "bin/lab-acceptance-verify",
+                str(artifact),
+                "--expect-profile",
+                "cuda",
+                "--require-run",
+                "--require-uvm-profile",
+            ]).stdout
+            self.assertIn("ok acceptance", out)
 
     def test_install_dry_run_and_handoff_are_portable(self):
         with tempfile.TemporaryDirectory() as td:

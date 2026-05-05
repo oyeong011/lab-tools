@@ -105,7 +105,7 @@ for item in "${steps[@]}"; do
     status=fail
     failures=$((failures + 1))
   fi
-  printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$status" "$rc" "$log" "$cmd" >> "$status_tsv"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$status" "$rc" "$(basename "$log")" "$cmd" >> "$status_tsv"
   printf '%-28s %s\n' "$name" "$status"
 done
 
