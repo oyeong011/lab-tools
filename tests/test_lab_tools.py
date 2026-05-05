@@ -132,6 +132,16 @@ class LabToolsSmokeTests(unittest.TestCase):
         ]).stdout
         self.assertIn("DRY remote collect: lab-acceptance-collect --profile cuda --run --uvm-profile --require-gpu-name RTX\\ 5060 --min-gpu-memory-mib 8000", out)
         self.assertIn("DRY local verify: lab-acceptance-bundle --check-bundle", out)
+        out = self.run_cmd([
+            "bin/lab-remote-acceptance",
+            "user@intel-host",
+            "--dry-run",
+            "--profile",
+            "cpu",
+            "--require-opencl-device",
+            "Intel",
+        ]).stdout
+        self.assertIn("DRY remote collect: lab-acceptance-collect --profile cpu --require-opencl-device Intel", out)
         with tempfile.TemporaryDirectory() as td:
             artifact = Path(td)
             for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "rtx-smoke-dry", "forest-uvm-config", "memory-kernels-config", "memory-kernels-sweep-plan", "rtx-smoke-run", "uvm-profile-small"]:
@@ -219,6 +229,35 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "RTX 5060",
                 "--min-gpu-memory-mib",
                 "8000",
+            ]).stdout
+            self.assertIn("ok acceptance", out)
+            cpu_artifact = artifact.parent / "cpu-artifact"
+            cpu_artifact.mkdir()
+            for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "cpu-quick-config"]:
+                (cpu_artifact / f"{name}.log").write_text("ok\n")
+            (cpu_artifact / "doctor.log").write_text(
+                "== OpenCL devices ==\n"
+                "Platform #0: Intel(R) OpenCL HD Graphics\n"
+                "`-- Device #0: Intel(R) UHD Graphics 770\n"
+            )
+            cpu_steps = [
+                {"name": name, "status": "ok", "exit_code": "0", "log": f"{name}.log", "command": name}
+                for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "cpu-quick-config"]
+            ]
+            (cpu_artifact / "acceptance.json").write_text(json.dumps({
+                "schema_version": 1,
+                "profile": "cpu",
+                "status": "ok",
+                "failures": 0,
+                "steps": cpu_steps,
+            }))
+            out = self.run_cmd([
+                "bin/lab-acceptance-verify",
+                str(cpu_artifact),
+                "--expect-profile",
+                "cpu",
+                "--require-opencl-device",
+                "Intel",
             ]).stdout
             self.assertIn("ok acceptance", out)
 

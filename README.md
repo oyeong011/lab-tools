@@ -62,6 +62,7 @@ lab-acceptance-bundle <acceptance_dir> --expect-profile cuda --require-run --req
 lab-acceptance-bundle --check-bundle <bundle.tar.gz> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-collect --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
 lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
+lab-remote-acceptance user@intel-host --profile cpu --require-opencl-device Intel
 ```
 
 RTX host smoke and UVM mechanism profiling:

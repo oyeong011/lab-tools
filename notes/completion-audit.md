@@ -30,6 +30,7 @@ covering:
 | Forest PDF-derived UVM path | `forest-uvm-access`, `config/cuda-uvm-access.cu`, `bin/lab-uvm-profile` | Access classes `ls`, `hchi`, `hcli`, `lc`; UVM Nsight profile path documented | Done |
 | RTX CUDA smoke path | `bin/lab-rtx-smoke`, CUDA wrappers | Dry-run/config validation passes locally; real run requires RTX host | Blocked |
 | RTX GPU identity and VRAM gate | `lab-acceptance-verify --require-gpu-name --min-gpu-memory-mib` | Verifier parses `rtx-smoke-*` logs for `nvidia-smi` GPU name and `MiB` memory | Ready |
+| Ubuntu Intel iGPU identity gate | `lab-acceptance-verify --require-opencl-device Intel` | Verifier parses `lab-doctor` OpenCL device output | Ready |
 | CUDA memory kernels | `config/cuda-memory-kernels.cu`, `bench-cuda-gemv`, `bench-cuda-spmv`, `bench-cuda-gcn` | Unit tests cover summary/report/stat columns and sweep generation | Done for code, blocked for RTX runtime |
 | Apple Silicon path | `bin/lab-apple-smoke`, `bench-apple-metal`, `bench-apple-mps` | Apple collect and acceptance bundle passed on this Mac | Done |
 | Acceptance artifact generation | `bin/lab-host-acceptance` | Local Apple acceptance artifact generated under `~/lab/_acceptance` | Done |
@@ -58,6 +59,12 @@ If SSH access is available from this Mac:
 
 ```bash
 lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
+```
+
+For the Ubuntu Intel iGPU host:
+
+```bash
+lab-remote-acceptance user@intel-host --profile cpu --require-opencl-device Intel
 ```
 
 If commands are run directly on the RTX host:

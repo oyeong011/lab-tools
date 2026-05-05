@@ -13,6 +13,9 @@ DRY_RUN=0
 TARGET=""
 GPU_NAMES=()
 MIN_GPU_MEMORY_MIB=""
+OPENCL_DEVICES=()
+GPU_NAME_COUNT=0
+OPENCL_DEVICE_COUNT=0
 
 usage() {
   cat <<'EOF'
@@ -20,6 +23,7 @@ Usage:
   lab-remote-acceptance SSH_TARGET [--profile cpu|cuda|apple] [--run] [--uvm-profile]
                                  [--repo-url URL] [--remote-dir DIR] [--out DIR]
                                  [--require-gpu-name SUBSTRING] [--min-gpu-memory-mib MIB]
+                                 [--require-opencl-device SUBSTRING]
                                  [--dry-run]
 
 Connects to SSH_TARGET, clones or updates lab-tools, installs it into that
@@ -44,8 +48,9 @@ while [ $# -gt 0 ]; do
     --repo-url) REPO_URL="${2:-}"; [ -n "$REPO_URL" ] || { usage >&2; exit 2; }; shift 2 ;;
     --remote-dir) REMOTE_DIR="${2:-}"; [ -n "$REMOTE_DIR" ] || { usage >&2; exit 2; }; shift 2 ;;
     --out) LOCAL_OUT="${2:-}"; [ -n "$LOCAL_OUT" ] || { usage >&2; exit 2; }; shift 2 ;;
-    --require-gpu-name) GPU_NAMES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --require-gpu-name) GPU_NAMES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; GPU_NAME_COUNT=$((GPU_NAME_COUNT + 1)); shift 2 ;;
     --min-gpu-memory-mib) MIN_GPU_MEMORY_MIB="${2:-}"; [ -n "$MIN_GPU_MEMORY_MIB" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --require-opencl-device) OPENCL_DEVICES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; OPENCL_DEVICE_COUNT=$((OPENCL_DEVICE_COUNT + 1)); shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help|help) usage; exit 0 ;;
     --*) usage >&2; exit 2 ;;
@@ -68,7 +73,7 @@ if [ "$UVM_PROFILE" -eq 1 ] && [ "$PROFILE" != cuda ]; then
   printf 'error: --uvm-profile requires --profile cuda\n' >&2
   exit 2
 fi
-if { [ "${#GPU_NAMES[@]}" -gt 0 ] || [ -n "$MIN_GPU_MEMORY_MIB" ]; } && [ -n "$PROFILE" ] && [ "$PROFILE" != cuda ]; then
+if { [ "$GPU_NAME_COUNT" -gt 0 ] || [ -n "$MIN_GPU_MEMORY_MIB" ]; } && [ -n "$PROFILE" ] && [ "$PROFILE" != cuda ]; then
   printf 'error: GPU hardware requirements require --profile cuda or no explicit profile\n' >&2
   exit 2
 fi
@@ -87,13 +92,21 @@ if [ "$UVM_PROFILE" -eq 1 ]; then
   collect_args+=("--uvm-profile")
   check_args+=("--require-uvm-profile")
 fi
-for gpu_name in "${GPU_NAMES[@]}"; do
-  collect_args+=("--require-gpu-name" "$gpu_name")
-  check_args+=("--require-gpu-name" "$gpu_name")
-done
+if [ "$GPU_NAME_COUNT" -gt 0 ]; then
+  for gpu_name in "${GPU_NAMES[@]}"; do
+    collect_args+=("--require-gpu-name" "$gpu_name")
+    check_args+=("--require-gpu-name" "$gpu_name")
+  done
+fi
 if [ -n "$MIN_GPU_MEMORY_MIB" ]; then
   collect_args+=("--min-gpu-memory-mib" "$MIN_GPU_MEMORY_MIB")
   check_args+=("--min-gpu-memory-mib" "$MIN_GPU_MEMORY_MIB")
+fi
+if [ "$OPENCL_DEVICE_COUNT" -gt 0 ]; then
+  for opencl_device in "${OPENCL_DEVICES[@]}"; do
+    collect_args+=("--require-opencl-device" "$opencl_device")
+    check_args+=("--require-opencl-device" "$opencl_device")
+  done
 fi
 
 print_words() {

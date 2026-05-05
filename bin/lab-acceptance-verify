@@ -78,6 +78,16 @@ def gpu_log_text(root, by_name):
     return "\n".join(chunks)
 
 
+def step_log_text(root, by_name, name):
+    step = by_name.get(name)
+    if not step:
+        return ""
+    path = log_path(root, step.get("log", ""))
+    if not path:
+        return ""
+    return path.read_text(errors="replace")
+
+
 def parse_gpu_names(text):
     names = []
     for line in text.splitlines():
@@ -114,6 +124,7 @@ def main():
     parser.add_argument("--require-uvm-profile", action="store_true")
     parser.add_argument("--require-gpu-name", action="append", default=[], metavar="SUBSTRING")
     parser.add_argument("--min-gpu-memory-mib", type=int, metavar="MIB")
+    parser.add_argument("--require-opencl-device", action="append", default=[], metavar="SUBSTRING")
     args = parser.parse_args()
 
     try:
@@ -187,6 +198,15 @@ def main():
                     f"GPU memory requirement not met: max {max_memory} MiB, "
                     f"required {args.min_gpu_memory_mib} MiB"
                 )
+
+    if args.require_opencl_device:
+        doctor_text = step_log_text(root, by_name, "doctor")
+        doctor_lower = doctor_text.lower()
+        for required_device in args.require_opencl_device:
+            if required_device.lower() not in doctor_lower:
+                errors.append(f"OpenCL device requirement not met: {required_device!r}")
+        if "warn no opencl device detected" in doctor_lower:
+            errors.append("OpenCL device requirement not met: lab-doctor detected no OpenCL device")
 
     if errors:
         for err in errors:
