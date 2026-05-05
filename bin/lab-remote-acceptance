@@ -4,6 +4,8 @@ set -euo pipefail
 REPO_URL="${LAB_TOOLS_REPO_URL:-https://github.com/oyeong011/lab-tools.git}"
 REMOTE_DIR="${LAB_REMOTE_ACCEPTANCE_DIR:-lab-tools}"
 LOCAL_OUT="${LAB_REMOTE_ACCEPTANCE_OUT:-$HOME/lab/_remote_acceptance}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 PROFILE=""
 RUN=0
 UVM_PROFILE=0

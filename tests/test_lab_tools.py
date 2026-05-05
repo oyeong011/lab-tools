@@ -205,6 +205,7 @@ class LabToolsSmokeTests(unittest.TestCase):
             self.assertFalse((Path(td) / "bin").exists())
             self.assertFalse((Path(td) / ".config" / "lab").exists())
         handoff = (BIN / "lab-handoff").read_text()
+        remote = (BIN / "lab-remote-acceptance").read_text()
         self.assertIn("lab-tools-install", handoff)
         self.assertIn("lab-acceptance-bundle", handoff)
         self.assertIn("lab-acceptance-collect", handoff)
@@ -213,6 +214,7 @@ class LabToolsSmokeTests(unittest.TestCase):
         self.assertIn("export PATH=", handoff)
         self.assertIn("hashlib", handoff)
         self.assertNotIn("sha256sum", handoff)
+        self.assertIn('PATH="$SCRIPT_DIR:$HOME/bin:$PATH"', remote)
 
     def test_summary_stats_and_validation_on_fixture_suite(self):
         with tempfile.TemporaryDirectory() as td:
