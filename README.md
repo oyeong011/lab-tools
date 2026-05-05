@@ -59,6 +59,7 @@ lab-host-acceptance --run           # also run host-specific smoke benchmark
 lab-host-acceptance --run --uvm-profile   # CUDA hosts: also capture a small Nsight UVM profile
 lab-acceptance-verify <acceptance_dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle <acceptance_dir> --expect-profile cuda --require-run --require-uvm-profile
+lab-acceptance-bundle --check-bundle <bundle.tar.gz> --expect-profile cuda --require-run --require-uvm-profile
 ```
 
 RTX host smoke and UVM mechanism profiling:

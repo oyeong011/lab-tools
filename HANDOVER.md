@@ -80,6 +80,7 @@ bench-suite-config memory-kernels
 lab-host-acceptance --run --uvm-profile
 lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
+lab-acceptance-bundle --check-bundle ~/lab/_acceptance_bundles/<bundle>.tar.gz --expect-profile cuda --require-run --require-uvm-profile
 ```
 
 MacBook M1/M4 smoke:
@@ -91,6 +92,7 @@ LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run --run-mps  # optional PyTorch M
 lab-host-acceptance --run
 lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile apple --require-run
 lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile apple --require-run
+lab-acceptance-bundle --check-bundle ~/lab/_acceptance_bundles/<bundle>.tar.gz --expect-profile apple --require-run
 ```
 
 ## 2. 캠페인 산출물

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package a lab-host-acceptance artifact for transfer to another machine."""
+"""Package or verify a lab-host-acceptance artifact transfer bundle."""
 import argparse
 import hashlib
 import json
@@ -78,15 +78,107 @@ def file_records(root):
     return records
 
 
+def safe_extract(tar, dest):
+    base = dest.resolve()
+    for member in tar.getmembers():
+        if member.issym() or member.islnk():
+            raise ValueError(f"refusing link member in bundle: {member.name}")
+        target = (dest / member.name).resolve()
+        if target != base and base not in target.parents:
+            raise ValueError(f"refusing unsafe path in bundle: {member.name}")
+    tar.extractall(dest)
+
+
+def verify_sidecar_sha(bundle):
+    sidecar = Path(str(bundle) + ".sha256")
+    if not sidecar.exists():
+        print(f"warning: sidecar sha256 not found: {sidecar}", file=sys.stderr)
+        return False
+    expected = sidecar.read_text(encoding="utf-8").split()[0]
+    actual = sha256_file(bundle)
+    if expected != actual:
+        raise ValueError(f"bundle sha256 mismatch: expected {expected}, got {actual}")
+    print(f"ok bundle sha256 {sidecar}")
+    return True
+
+
+def bundle_root(extract_dir):
+    entries = [p for p in extract_dir.iterdir() if p.is_dir()]
+    if len(entries) != 1:
+        raise ValueError("bundle must contain exactly one top-level directory")
+    return entries[0]
+
+
+def verify_internal_hashes(root):
+    sums = root / "SHA256SUMS"
+    if not sums.exists():
+        raise FileNotFoundError(f"SHA256SUMS not found in bundle root: {root}")
+    checked = 0
+    for line in sums.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        digest, rel = line.split(None, 1)
+        rel = rel.strip()
+        path = root / rel
+        if not path.exists():
+            raise FileNotFoundError(f"bundled file missing: {rel}")
+        actual = sha256_file(path)
+        if digest != actual:
+            raise ValueError(f"bundled file sha256 mismatch for {rel}: expected {digest}, got {actual}")
+        checked += 1
+    print(f"ok internal SHA256SUMS files={checked}")
+    return checked
+
+
+def acceptance_from_bundle(root):
+    manifest_path = root / "bundle-manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"bundle-manifest.json not found: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schema_version") != 1:
+        raise ValueError("bundle-manifest schema_version must be 1")
+    acceptance_root = root / "acceptance"
+    artifacts = sorted(p for p in acceptance_root.iterdir() if (p / "acceptance.json").exists()) if acceptance_root.exists() else []
+    if len(artifacts) != 1:
+        raise ValueError(f"expected exactly one bundled acceptance artifact, found {len(artifacts)}")
+    return artifacts[0]
+
+
+def check_bundle(args):
+    bundle = Path(args.check_bundle).expanduser().resolve()
+    if not bundle.exists():
+        raise FileNotFoundError(f"bundle not found: {bundle}")
+    verify_sidecar_sha(bundle)
+    with tempfile.TemporaryDirectory(prefix="lab-acceptance-check-") as td:
+        extract_dir = Path(td)
+        with tarfile.open(bundle, "r:*") as tar:
+            safe_extract(tar, extract_dir)
+        root = bundle_root(extract_dir)
+        verify_internal_hashes(root)
+        artifact = acceptance_from_bundle(root)
+        run_verifier(args, artifact)
+    print(f"ok acceptance bundle {bundle}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("artifact", help="Acceptance directory or acceptance.json")
+    parser.add_argument("artifact", nargs="?", help="Acceptance directory or acceptance.json")
+    parser.add_argument("--check-bundle", metavar="BUNDLE", help="Verify a .tar.gz bundle created by this command")
     parser.add_argument("--out", help="Output .tar.gz path or output directory")
     parser.add_argument("--expect-profile", choices=["cpu", "cuda", "apple", "cluster"])
     parser.add_argument("--require-run", action="store_true")
     parser.add_argument("--require-uvm-profile", action="store_true")
     parser.add_argument("--no-verify", action="store_true", help="Package without running lab-acceptance-verify first")
     args = parser.parse_args()
+
+    if args.check_bundle:
+        try:
+            return check_bundle(args)
+        except Exception as exc:
+            return fail(str(exc))
+    if not args.artifact:
+        parser.error("artifact is required unless --check-bundle is used")
 
     try:
         artifact, json_path = resolve_artifact(args.artifact)

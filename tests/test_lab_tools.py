@@ -141,6 +141,16 @@ class LabToolsSmokeTests(unittest.TestCase):
             bundle_path = Path(bundle_line.split("=", 1)[1])
             self.assertTrue(bundle_path.exists())
             self.assertTrue(Path(str(bundle_path) + ".sha256").exists())
+            out = self.run_cmd([
+                "bin/lab-acceptance-bundle",
+                "--check-bundle",
+                str(bundle_path),
+                "--expect-profile",
+                "cuda",
+                "--require-run",
+                "--require-uvm-profile",
+            ]).stdout
+            self.assertIn("ok acceptance bundle", out)
             extract_dir = artifact / "extract"
             extract_dir.mkdir()
             with tarfile.open(bundle_path, "r:gz") as tar:
