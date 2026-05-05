@@ -231,7 +231,7 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "8000",
             ]).stdout
             self.assertIn("ok acceptance", out)
-            cpu_artifact = artifact.parent / "cpu-artifact"
+            cpu_artifact = artifact / "cpu-artifact"
             cpu_artifact.mkdir()
             for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "cpu-quick-config"]:
                 (cpu_artifact / f"{name}.log").write_text("ok\n")
