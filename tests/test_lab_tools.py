@@ -95,6 +95,9 @@ class LabToolsSmokeTests(unittest.TestCase):
         self.assertIn("Dry-run: yes", out)
         self.assertIn("LAB_WORKLOADS=cuda-uvm", out)
         self.assertIn("LAB_UVM_PATTERN=ls", out)
+        out = self.run_cmd(["bin/lab-host-acceptance", "--dry-run"]).stdout
+        self.assertIn("Acceptance dry-run", out)
+        self.assertIn("doctor", out)
 
     def test_install_dry_run_and_handoff_are_portable(self):
         with tempfile.TemporaryDirectory() as td:

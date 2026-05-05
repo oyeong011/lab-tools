@@ -51,6 +51,14 @@ lab-validate suite-config ~/.config/lab/suites/forest-uvm.yaml
 lab-validate suite-dir <suite_dir>
 ```
 
+Host acceptance artifact:
+
+```bash
+lab-host-acceptance                 # readiness logs under ~/lab/_acceptance
+lab-host-acceptance --run           # also run host-specific smoke benchmark
+lab-host-acceptance --run --uvm-profile   # CUDA hosts: also capture a small Nsight UVM profile
+```
+
 RTX host smoke and UVM mechanism profiling:
 
 ```bash
@@ -97,6 +105,7 @@ cd ~/lab-tools
 bash bin/lab-tools-install            # copies into ~/bin, ~/.config/lab, ~/notes
 export PATH="$HOME/bin:$PATH"         # if ~/bin is not already in your shell PATH
 lab-doctor                            # sanity check
+lab-host-acceptance                   # reproducible host readiness artifact
 ```
 
 After install, on Intel CPUs:

@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+RUN=0
+UVM_PROFILE=0
+DRY_RUN=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-host-acceptance [--run] [--uvm-profile] [--dry-run]
+
+Creates a host-level acceptance artifact under ~/lab/_acceptance. The default
+checks install/config/readiness. With --run it also runs the profile-specific
+smoke benchmark. With --uvm-profile on CUDA hosts, it captures a small Nsight
+Systems UVM profile.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --run) RUN=1; shift ;;
+    --uvm-profile) UVM_PROFILE=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help|help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+slug_host() {
+  hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//'
+}
+
+profile="$(lab-profile 2>/dev/null || printf cpu)"
+host="$(slug_host)"
+[ -n "$host" ] || host=unknown-host
+stamp="$(date +%Y%m%d-%H%M%S)"
+out_dir="$LAB_HOME/_acceptance/${host}-${profile}-${stamp}-$$"
+
+steps=()
+add_step() {
+  steps+=("$1"$'\t'"$2")
+}
+
+add_step "profile" "lab-profile && lab-profile detect"
+add_step "doctor" "lab-doctor"
+add_step "matrix-validate" "lab-validate matrix config/pipelines/research-matrix.yaml"
+add_step "baseline-config" "bench-suite-config --dry-run config/suites/baseline.yaml"
+add_step "pipeline-cpu-plan" "lab-pipeline plan consumer-accelerator-baseline --profile cpu --dry-run"
+
+case "$profile" in
+  cuda)
+    add_step "rtx-smoke-dry" "lab-rtx-smoke"
+    add_step "forest-uvm-config" "bench-suite-config --dry-run config/suites/forest-uvm.yaml"
+    add_step "memory-kernels-config" "bench-suite-config --dry-run config/suites/memory-kernels.yaml"
+    add_step "memory-kernels-sweep-plan" "lab-pipeline plan memory-hierarchy-pim --profile cuda --sweep --dry-run"
+    if [ "$RUN" -eq 1 ]; then
+      add_step "rtx-smoke-run" "LAB_RTX_SMOKE_UVM_MB=${LAB_RTX_SMOKE_UVM_MB:-512} lab-rtx-smoke --run"
+    fi
+    if [ "$UVM_PROFILE" -eq 1 ]; then
+      add_step "uvm-profile-small" "lab-uvm-profile --pattern ls --mb ${LAB_ACCEPTANCE_UVM_MB:-512} --passes 1"
+    fi
+    ;;
+  apple)
+    add_step "apple-smoke-dry" "lab-apple-smoke"
+    if [ "$RUN" -eq 1 ]; then
+      add_step "apple-smoke-run" "LAB_APPLE_ELEMENTS=${LAB_APPLE_ELEMENTS:-1024} lab-apple-smoke --run --run-mps"
+    fi
+    ;;
+  *)
+    add_step "cpu-quick-config" "bench-suite-config --dry-run config/suites/quick.yaml"
+    ;;
+esac
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  printf 'Acceptance dry-run profile=%s\n' "$profile"
+  for item in "${steps[@]}"; do
+    name="${item%%$'\t'*}"
+    cmd="${item#*$'\t'}"
+    printf 'DRY %-28s %s\n' "$name" "$cmd"
+  done
+  exit 0
+fi
+
+mkdir -p "$out_dir"
+status_tsv="$out_dir/status.tsv"
+printf 'name\tstatus\texit_code\tlog\tcommand\n' > "$status_tsv"
+
+failures=0
+for item in "${steps[@]}"; do
+  name="${item%%$'\t'*}"
+  cmd="${item#*$'\t'}"
+  log="$out_dir/${name}.log"
+  printf '== %s ==\n%s\n' "$name" "$cmd" | tee "$log" >/dev/null
+  set +e
+  bash -c "$cmd" >> "$log" 2>&1
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    status=ok
+  else
+    status=fail
+    failures=$((failures + 1))
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$status" "$rc" "$log" "$cmd" >> "$status_tsv"
+  printf '%-28s %s\n' "$name" "$status"
+done
+
+python3 - "$out_dir" "$profile" "$failures" <<'PY'
+import csv, json, os, sys
+from datetime import datetime
+from pathlib import Path
+
+out_dir = Path(sys.argv[1])
+profile = sys.argv[2]
+failures = int(sys.argv[3])
+with (out_dir / "status.tsv").open(newline="") as f:
+    rows = list(csv.DictReader(f, delimiter="\t"))
+data = {
+    "schema_version": 1,
+    "generated_at": datetime.now().isoformat(timespec="seconds"),
+    "host": os.uname().nodename,
+    "profile": profile,
+    "status": "ok" if failures == 0 else "failed",
+    "failures": failures,
+    "steps": rows,
+}
+(out_dir / "acceptance.json").write_text(json.dumps(data, indent=2) + "\n")
+(out_dir / "README.md").write_text(
+    "# Lab Host Acceptance\n\n"
+    f"- Host: `{data['host']}`\n"
+    f"- Profile: `{profile}`\n"
+    f"- Status: `{data['status']}`\n"
+    f"- Failures: `{failures}`\n\n"
+    "See `status.tsv`, `acceptance.json`, and per-step logs in this directory.\n"
+)
+PY
+
+printf '\nacceptance_dir=%s\n' "$out_dir"
+if [ "$failures" -ne 0 ]; then
+  exit 1
+fi

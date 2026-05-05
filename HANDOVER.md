@@ -59,6 +59,7 @@ lab-pipeline plan consumer-accelerator-baseline --profile cpu --dry-run
 lab-pipeline plan forest-uvm-access --profile cuda --sweep --dry-run
 lab-pipeline plan memory-hierarchy-pim --profile cuda --sweep --dry-run
 lab-validate matrix ~/.config/lab/pipelines/research-matrix.yaml
+lab-host-acceptance
 ```
 
 `forest-uvm-access`는 Forest 논문에서 중요한 managed memory access
@@ -75,6 +76,7 @@ lab-rtx-smoke
 lab-rtx-smoke --run
 lab-uvm-profile --pattern hchi --mb 12288 --passes 2
 bench-suite-config memory-kernels
+lab-host-acceptance --run --uvm-profile
 ```
 
 MacBook M1/M4 smoke:
@@ -83,6 +85,7 @@ export PATH="$HOME/bin:$PATH"
 lab-apple-smoke
 LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
 LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run --run-mps  # optional PyTorch MPS path
+lab-host-acceptance --run
 ```
 
 ## 2. 캠페인 산출물

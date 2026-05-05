@@ -43,7 +43,7 @@ printf '== Framework commands (all profiles) ==\n'
 for cmd in \
   lab-safe-run lab-pin-system lab-profile lab-tools-install lab-tools-sync \
   lab-apple-smoke lab-pipeline lab-rtx-smoke lab-uvm-profile lab-validate \
-  lab-doctor lab-manifest lab-handoff lab-index lab-archive lab-backup lab-plot lab-clean \
+  lab-doctor lab-host-acceptance lab-manifest lab-handoff lab-index lab-archive lab-backup lab-plot lab-clean \
   bench-suite bench-suite-config summarize-suite suite-stats suite-compare \
   render-suite-report render-suite-html render-method-section render-repro-checklist \
   hw-report thermal-check sensor-snapshot monitor-run \
