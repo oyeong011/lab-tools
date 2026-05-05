@@ -63,6 +63,7 @@ lab-acceptance-bundle --check-bundle <bundle.tar.gz> --expect-profile cuda --req
 lab-acceptance-collect --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
 lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
 lab-remote-acceptance user@intel-host --profile cpu --require-opencl-device Intel
+lab-acceptance-collect --profile apple --run --require-apple-chip "Apple M1"
 ```
 
 RTX host smoke and UVM mechanism profiling:

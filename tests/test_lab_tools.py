@@ -142,6 +142,16 @@ class LabToolsSmokeTests(unittest.TestCase):
             "Intel",
         ]).stdout
         self.assertIn("DRY remote collect: lab-acceptance-collect --profile cpu --require-opencl-device Intel", out)
+        out = self.run_cmd([
+            "bin/lab-acceptance-collect",
+            "--dry-run",
+            "--profile",
+            "apple",
+            "--run",
+            "--require-apple-chip",
+            "Apple M1",
+        ]).stdout
+        self.assertIn("DRY lab-acceptance-verify <acceptance_dir> --expect-profile apple --require-run --require-apple-chip Apple M1", out)
         with tempfile.TemporaryDirectory() as td:
             artifact = Path(td)
             for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "rtx-smoke-dry", "forest-uvm-config", "memory-kernels-config", "memory-kernels-sweep-plan", "rtx-smoke-run", "uvm-profile-small"]:
@@ -258,6 +268,37 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "cpu",
                 "--require-opencl-device",
                 "Intel",
+            ]).stdout
+            self.assertIn("ok acceptance", out)
+            apple_artifact = artifact / "apple-artifact"
+            apple_artifact.mkdir()
+            for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "apple-smoke-dry", "apple-smoke-run"]:
+                (apple_artifact / f"{name}.log").write_text("ok\n")
+            (apple_artifact / "apple-smoke-dry.log").write_text(
+                "== System ==\n"
+                "Darwin test-host arm64\n"
+                "Apple M1\n"
+                "Chipset Model: Apple M1\n"
+            )
+            apple_steps = [
+                {"name": name, "status": "ok", "exit_code": "0", "log": f"{name}.log", "command": name}
+                for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "apple-smoke-dry", "apple-smoke-run"]
+            ]
+            (apple_artifact / "acceptance.json").write_text(json.dumps({
+                "schema_version": 1,
+                "profile": "apple",
+                "status": "ok",
+                "failures": 0,
+                "steps": apple_steps,
+            }))
+            out = self.run_cmd([
+                "bin/lab-acceptance-verify",
+                str(apple_artifact),
+                "--expect-profile",
+                "apple",
+                "--require-run",
+                "--require-apple-chip",
+                "Apple M1",
             ]).stdout
             self.assertIn("ok acceptance", out)
 

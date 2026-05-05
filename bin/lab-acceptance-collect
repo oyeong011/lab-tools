@@ -11,6 +11,8 @@ MIN_GPU_MEMORY_MIB=""
 OPENCL_DEVICES=()
 GPU_NAME_COUNT=0
 OPENCL_DEVICE_COUNT=0
+APPLE_CHIPS=()
+APPLE_CHIP_COUNT=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 
@@ -20,6 +22,7 @@ Usage:
   lab-acceptance-collect [--profile cpu|cuda|apple] [--run] [--uvm-profile] [--out DIR_OR_TAR_GZ] [--dry-run]
                          [--require-gpu-name SUBSTRING] [--min-gpu-memory-mib MIB]
                          [--require-opencl-device SUBSTRING]
+                         [--require-apple-chip SUBSTRING]
 
 Runs the full host acceptance transfer path:
   1. lab-host-acceptance
@@ -46,6 +49,7 @@ while [ $# -gt 0 ]; do
     --require-gpu-name) GPU_NAMES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; GPU_NAME_COUNT=$((GPU_NAME_COUNT + 1)); shift 2 ;;
     --min-gpu-memory-mib) MIN_GPU_MEMORY_MIB="${2:-}"; [ -n "$MIN_GPU_MEMORY_MIB" ] || { usage >&2; exit 2; }; shift 2 ;;
     --require-opencl-device) OPENCL_DEVICES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; OPENCL_DEVICE_COUNT=$((OPENCL_DEVICE_COUNT + 1)); shift 2 ;;
+    --require-apple-chip) APPLE_CHIPS+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; APPLE_CHIP_COUNT=$((APPLE_CHIP_COUNT + 1)); shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help|help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
@@ -63,6 +67,10 @@ if [ "$UVM_PROFILE" -eq 1 ] && [ "$active_profile" != cuda ]; then
 fi
 if { [ "$GPU_NAME_COUNT" -gt 0 ] || [ -n "$MIN_GPU_MEMORY_MIB" ]; } && [ "$active_profile" != cuda ]; then
   printf 'error: GPU hardware requirements require cuda profile, active profile is %s\n' "$active_profile" >&2
+  exit 2
+fi
+if [ "$APPLE_CHIP_COUNT" -gt 0 ] && [ "$active_profile" != apple ]; then
+  printf 'error: Apple chip requirements require apple profile, active profile is %s\n' "$active_profile" >&2
   exit 2
 fi
 
@@ -87,6 +95,11 @@ fi
 if [ "$OPENCL_DEVICE_COUNT" -gt 0 ]; then
   for opencl_device in "${OPENCL_DEVICES[@]}"; do
     verify_args+=("--require-opencl-device" "$opencl_device")
+  done
+fi
+if [ "$APPLE_CHIP_COUNT" -gt 0 ]; then
+  for apple_chip in "${APPLE_CHIPS[@]}"; do
+    verify_args+=("--require-apple-chip" "$apple_chip")
   done
 fi
 

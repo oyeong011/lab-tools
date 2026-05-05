@@ -31,6 +31,7 @@ covering:
 | RTX CUDA smoke path | `bin/lab-rtx-smoke`, CUDA wrappers | Dry-run/config validation passes locally; real run requires RTX host | Blocked |
 | RTX GPU identity and VRAM gate | `lab-acceptance-verify --require-gpu-name --min-gpu-memory-mib` | Verifier parses `rtx-smoke-*` logs for `nvidia-smi` GPU name and `MiB` memory | Ready |
 | Ubuntu Intel iGPU identity gate | `lab-acceptance-verify --require-opencl-device Intel` | Verifier parses `lab-doctor` OpenCL device output | Ready |
+| Apple Silicon identity gate | `lab-acceptance-verify --require-apple-chip` | Verifier parses `lab-apple-smoke` system output | Ready |
 | CUDA memory kernels | `config/cuda-memory-kernels.cu`, `bench-cuda-gemv`, `bench-cuda-spmv`, `bench-cuda-gcn` | Unit tests cover summary/report/stat columns and sweep generation | Done for code, blocked for RTX runtime |
 | Apple Silicon path | `bin/lab-apple-smoke`, `bench-apple-metal`, `bench-apple-mps` | Apple collect and acceptance bundle passed on this Mac | Done |
 | Acceptance artifact generation | `bin/lab-host-acceptance` | Local Apple acceptance artifact generated under `~/lab/_acceptance` | Done |
@@ -66,6 +67,14 @@ For the Ubuntu Intel iGPU host:
 ```bash
 lab-remote-acceptance user@intel-host --profile cpu --require-opencl-device Intel
 ```
+
+For Apple Silicon:
+
+```bash
+lab-acceptance-collect --profile apple --run --require-apple-chip "Apple M1"
+```
+
+Use `"Apple M4"` on the M4 MacBook.
 
 If commands are run directly on the RTX host:
 

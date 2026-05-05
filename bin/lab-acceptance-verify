@@ -125,6 +125,7 @@ def main():
     parser.add_argument("--require-gpu-name", action="append", default=[], metavar="SUBSTRING")
     parser.add_argument("--min-gpu-memory-mib", type=int, metavar="MIB")
     parser.add_argument("--require-opencl-device", action="append", default=[], metavar="SUBSTRING")
+    parser.add_argument("--require-apple-chip", action="append", default=[], metavar="SUBSTRING")
     args = parser.parse_args()
 
     try:
@@ -207,6 +208,17 @@ def main():
                 errors.append(f"OpenCL device requirement not met: {required_device!r}")
         if "warn no opencl device detected" in doctor_lower:
             errors.append("OpenCL device requirement not met: lab-doctor detected no OpenCL device")
+
+    if args.require_apple_chip:
+        if profile != "apple":
+            errors.append("Apple chip requirements require profile='apple'")
+        apple_text = "\n".join([
+            step_log_text(root, by_name, "apple-smoke-dry"),
+            step_log_text(root, by_name, "apple-smoke-run"),
+        ]).lower()
+        for required_chip in args.require_apple_chip:
+            if required_chip.lower() not in apple_text:
+                errors.append(f"Apple chip requirement not met: {required_chip!r}")
 
     if errors:
         for err in errors:

@@ -16,6 +16,8 @@ MIN_GPU_MEMORY_MIB=""
 OPENCL_DEVICES=()
 GPU_NAME_COUNT=0
 OPENCL_DEVICE_COUNT=0
+APPLE_CHIPS=()
+APPLE_CHIP_COUNT=0
 
 usage() {
   cat <<'EOF'
@@ -24,6 +26,7 @@ Usage:
                                  [--repo-url URL] [--remote-dir DIR] [--out DIR]
                                  [--require-gpu-name SUBSTRING] [--min-gpu-memory-mib MIB]
                                  [--require-opencl-device SUBSTRING]
+                                 [--require-apple-chip SUBSTRING]
                                  [--dry-run]
 
 Connects to SSH_TARGET, clones or updates lab-tools, installs it into that
@@ -51,6 +54,7 @@ while [ $# -gt 0 ]; do
     --require-gpu-name) GPU_NAMES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; GPU_NAME_COUNT=$((GPU_NAME_COUNT + 1)); shift 2 ;;
     --min-gpu-memory-mib) MIN_GPU_MEMORY_MIB="${2:-}"; [ -n "$MIN_GPU_MEMORY_MIB" ] || { usage >&2; exit 2; }; shift 2 ;;
     --require-opencl-device) OPENCL_DEVICES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; OPENCL_DEVICE_COUNT=$((OPENCL_DEVICE_COUNT + 1)); shift 2 ;;
+    --require-apple-chip) APPLE_CHIPS+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; APPLE_CHIP_COUNT=$((APPLE_CHIP_COUNT + 1)); shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help|help) usage; exit 0 ;;
     --*) usage >&2; exit 2 ;;
@@ -75,6 +79,10 @@ if [ "$UVM_PROFILE" -eq 1 ] && [ "$PROFILE" != cuda ]; then
 fi
 if { [ "$GPU_NAME_COUNT" -gt 0 ] || [ -n "$MIN_GPU_MEMORY_MIB" ]; } && [ -n "$PROFILE" ] && [ "$PROFILE" != cuda ]; then
   printf 'error: GPU hardware requirements require --profile cuda or no explicit profile\n' >&2
+  exit 2
+fi
+if [ "$APPLE_CHIP_COUNT" -gt 0 ] && [ -n "$PROFILE" ] && [ "$PROFILE" != apple ]; then
+  printf 'error: Apple chip requirements require --profile apple or no explicit profile\n' >&2
   exit 2
 fi
 
@@ -106,6 +114,12 @@ if [ "$OPENCL_DEVICE_COUNT" -gt 0 ]; then
   for opencl_device in "${OPENCL_DEVICES[@]}"; do
     collect_args+=("--require-opencl-device" "$opencl_device")
     check_args+=("--require-opencl-device" "$opencl_device")
+  done
+fi
+if [ "$APPLE_CHIP_COUNT" -gt 0 ]; then
+  for apple_chip in "${APPLE_CHIPS[@]}"; do
+    collect_args+=("--require-apple-chip" "$apple_chip")
+    check_args+=("--require-apple-chip" "$apple_chip")
   done
 fi
 
