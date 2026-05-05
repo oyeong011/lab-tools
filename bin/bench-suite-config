@@ -12,6 +12,8 @@ Usage:
   bench-suite-config [--dry-run] [CONFIG]
 
 CONFIG may be a path or a config name under ~/.config/lab/suites.
+When run from a lab-tools checkout, repo-local config/suites is preferred over
+installed configs so stale user-level files do not shadow the current checkout.
 --dry-run parses the config and prints the resolved environment without
 creating an experiment or running benchmarks.
 EOF
@@ -30,7 +32,12 @@ done
 
 CONFIG_PATH="$CONFIG_NAME"
 if [ ! -f "$CONFIG_PATH" ]; then
-  if [ -f "$HOME/.config/lab/suites/${CONFIG_NAME%.yaml}.yaml" ]; then
+  REPO_SUITES="$SCRIPT_DIR/../config/suites"
+  if [ -f "$REPO_SUITES/${CONFIG_NAME%.yaml}.yaml" ]; then
+    CONFIG_PATH="$REPO_SUITES/${CONFIG_NAME%.yaml}.yaml"
+  elif [ -f "$REPO_SUITES/${CONFIG_NAME%.env}.env" ]; then
+    CONFIG_PATH="$REPO_SUITES/${CONFIG_NAME%.env}.env"
+  elif [ -f "$HOME/.config/lab/suites/${CONFIG_NAME%.yaml}.yaml" ]; then
     CONFIG_PATH="$HOME/.config/lab/suites/${CONFIG_NAME%.yaml}.yaml"
   else
     CONFIG_PATH="$HOME/.config/lab/suites/${CONFIG_NAME%.env}.env"
@@ -42,6 +49,11 @@ if [ ! -f "$CONFIG_PATH" ]; then
   printf 'Available configs:\n' >&2
   if [ -d "$HOME/.config/lab/suites" ]; then
     find "$HOME/.config/lab/suites" -maxdepth 1 -type f \( -name '*.env' -o -name '*.yaml' \) \
+      | while IFS= read -r file; do printf '  %s\n' "$(basename "$file")"; done \
+      | sort >&2
+  fi
+  if [ -d "$SCRIPT_DIR/../config/suites" ]; then
+    find "$SCRIPT_DIR/../config/suites" -maxdepth 1 -type f \( -name '*.env' -o -name '*.yaml' \) \
       | while IFS= read -r file; do printf '  %s\n' "$(basename "$file")"; done \
       | sort >&2
   fi

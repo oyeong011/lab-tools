@@ -95,6 +95,9 @@ class LabToolsSmokeTests(unittest.TestCase):
         self.assertIn("Dry-run: yes", out)
         self.assertIn("LAB_WORKLOADS=cuda-uvm", out)
         self.assertIn("LAB_UVM_PATTERN=ls", out)
+        named = self.run_cmd(["bin/bench-suite-config", "--dry-run", "forest-uvm.yaml"]).stdout
+        self.assertIn("config/suites/forest-uvm.yaml", named)
+        self.assertIn("LAB_WORKLOADS=cuda-uvm", named)
         out = self.run_cmd(["bin/lab-host-acceptance", "--dry-run"]).stdout
         self.assertIn("Acceptance dry-run", out)
         self.assertIn("doctor", out)
