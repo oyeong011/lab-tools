@@ -29,6 +29,7 @@ covering:
 | Research matrix | `config/pipelines/research-matrix.yaml` | `lab-validate matrix config/pipelines/research-matrix.yaml` passes | Done |
 | Forest PDF-derived UVM path | `forest-uvm-access`, `config/cuda-uvm-access.cu`, `bin/lab-uvm-profile` | Access classes `ls`, `hchi`, `hcli`, `lc`; UVM Nsight profile path documented | Done |
 | RTX CUDA smoke path | `bin/lab-rtx-smoke`, CUDA wrappers | Dry-run/config validation passes locally; real run requires RTX host | Blocked |
+| RTX GPU identity and VRAM gate | `lab-acceptance-verify --require-gpu-name --min-gpu-memory-mib` | Verifier parses `rtx-smoke-*` logs for `nvidia-smi` GPU name and `MiB` memory | Ready |
 | CUDA memory kernels | `config/cuda-memory-kernels.cu`, `bench-cuda-gemv`, `bench-cuda-spmv`, `bench-cuda-gcn` | Unit tests cover summary/report/stat columns and sweep generation | Done for code, blocked for RTX runtime |
 | Apple Silicon path | `bin/lab-apple-smoke`, `bench-apple-metal`, `bench-apple-mps` | Apple collect and acceptance bundle passed on this Mac | Done |
 | Acceptance artifact generation | `bin/lab-host-acceptance` | Local Apple acceptance artifact generated under `~/lab/_acceptance` | Done |
@@ -56,7 +57,7 @@ covering:
 If SSH access is available from this Mac:
 
 ```bash
-lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile
+lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
 ```
 
 If commands are run directly on the RTX host:
@@ -66,14 +67,17 @@ cd ~/lab-tools
 git pull
 bash bin/lab-tools-install
 export PATH="$HOME/bin:$PATH"
-lab-acceptance-collect --profile cuda --run --uvm-profile
+lab-acceptance-collect --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
 ```
 
 The returned bundle must then pass:
 
 ```bash
-lab-acceptance-bundle --check-bundle <bundle.tar.gz> --expect-profile cuda --require-run --require-uvm-profile
+lab-acceptance-bundle --check-bundle <bundle.tar.gz> --expect-profile cuda --require-run --require-uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
 ```
+
+For the RTX 5080 16GB host, use `--require-gpu-name "RTX 5080"` and a memory
+gate such as `--min-gpu-memory-mib 15000`.
 
 ## Decision
 

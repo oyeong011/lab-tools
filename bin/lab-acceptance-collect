@@ -6,6 +6,8 @@ UVM_PROFILE=0
 DRY_RUN=0
 PROFILE=""
 OUT=""
+GPU_NAMES=()
+MIN_GPU_MEMORY_MIB=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 
@@ -13,6 +15,7 @@ usage() {
   cat <<'EOF'
 Usage:
   lab-acceptance-collect [--profile cpu|cuda|apple] [--run] [--uvm-profile] [--out DIR_OR_TAR_GZ] [--dry-run]
+                         [--require-gpu-name SUBSTRING] [--min-gpu-memory-mib MIB]
 
 Runs the full host acceptance transfer path:
   1. lab-host-acceptance
@@ -36,6 +39,8 @@ while [ $# -gt 0 ]; do
     --run) RUN=1; shift ;;
     --uvm-profile) UVM_PROFILE=1; shift ;;
     --out) OUT="${2:-}"; [ -n "$OUT" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --require-gpu-name) GPU_NAMES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --min-gpu-memory-mib) MIN_GPU_MEMORY_MIB="${2:-}"; [ -n "$MIN_GPU_MEMORY_MIB" ] || { usage >&2; exit 2; }; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help|help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
@@ -51,6 +56,10 @@ if [ "$UVM_PROFILE" -eq 1 ] && [ "$active_profile" != cuda ]; then
   printf 'error: --uvm-profile requires cuda profile, active profile is %s\n' "$active_profile" >&2
   exit 2
 fi
+if { [ "${#GPU_NAMES[@]}" -gt 0 ] || [ -n "$MIN_GPU_MEMORY_MIB" ]; } && [ "$active_profile" != cuda ]; then
+  printf 'error: GPU hardware requirements require cuda profile, active profile is %s\n' "$active_profile" >&2
+  exit 2
+fi
 
 host_args=()
 verify_args=("--expect-profile" "$active_profile")
@@ -61,6 +70,12 @@ fi
 if [ "$UVM_PROFILE" -eq 1 ]; then
   host_args+=("--uvm-profile")
   verify_args+=("--require-uvm-profile")
+fi
+for gpu_name in "${GPU_NAMES[@]}"; do
+  verify_args+=("--require-gpu-name" "$gpu_name")
+done
+if [ -n "$MIN_GPU_MEMORY_MIB" ]; then
+  verify_args+=("--min-gpu-memory-mib" "$MIN_GPU_MEMORY_MIB")
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then

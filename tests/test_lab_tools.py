@@ -109,8 +109,13 @@ class LabToolsSmokeTests(unittest.TestCase):
             "cuda",
             "--run",
             "--uvm-profile",
+            "--require-gpu-name",
+            "RTX 5060",
+            "--min-gpu-memory-mib",
+            "8000",
         ]).stdout
         self.assertIn("DRY lab-host-acceptance --run --uvm-profile", out)
+        self.assertIn("--require-gpu-name RTX 5060 --min-gpu-memory-mib 8000", out)
         self.assertIn("DRY lab-acceptance-bundle --check-bundle", out)
         out = self.run_cmd([
             "bin/lab-remote-acceptance",
@@ -120,13 +125,23 @@ class LabToolsSmokeTests(unittest.TestCase):
             "cuda",
             "--run",
             "--uvm-profile",
+            "--require-gpu-name",
+            "RTX 5060",
+            "--min-gpu-memory-mib",
+            "8000",
         ]).stdout
-        self.assertIn("DRY remote collect: lab-acceptance-collect --profile cuda --run --uvm-profile", out)
+        self.assertIn("DRY remote collect: lab-acceptance-collect --profile cuda --run --uvm-profile --require-gpu-name RTX\\ 5060 --min-gpu-memory-mib 8000", out)
         self.assertIn("DRY local verify: lab-acceptance-bundle --check-bundle", out)
         with tempfile.TemporaryDirectory() as td:
             artifact = Path(td)
             for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "rtx-smoke-dry", "forest-uvm-config", "memory-kernels-config", "memory-kernels-sweep-plan", "rtx-smoke-run", "uvm-profile-small"]:
                 (artifact / f"{name}.log").write_text("ok\n")
+            (artifact / "rtx-smoke-dry.log").write_text(
+                "== NVIDIA device ==\n"
+                "GPU 0: NVIDIA GeForce RTX 5060 (UUID: GPU-test)\n"
+                "name, driver_version, cuda_version, memory.total [MiB], power.limit [W], persistence_mode\n"
+                "NVIDIA GeForce RTX 5060, 580.88, 13.0, 8188 MiB, 145.00 W, Enabled\n"
+            )
             steps = [
                 {"name": name, "status": "ok", "exit_code": "0", "log": f"{name}.log", "command": name}
                 for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "rtx-smoke-dry", "forest-uvm-config", "memory-kernels-config", "memory-kernels-sweep-plan", "rtx-smoke-run", "uvm-profile-small"]
@@ -145,6 +160,10 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "cuda",
                 "--require-run",
                 "--require-uvm-profile",
+                "--require-gpu-name",
+                "RTX 5060",
+                "--min-gpu-memory-mib",
+                "8000",
             ]).stdout
             self.assertIn("ok acceptance", out)
             bundle_dir = artifact.parent / f"{artifact.name}-bundles"
@@ -157,6 +176,10 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "cuda",
                 "--require-run",
                 "--require-uvm-profile",
+                "--require-gpu-name",
+                "RTX 5060",
+                "--min-gpu-memory-mib",
+                "8000",
             ]).stdout
             bundle_line = next(line for line in out.splitlines() if line.startswith("bundle="))
             bundle_path = Path(bundle_line.split("=", 1)[1])
@@ -170,6 +193,10 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "cuda",
                 "--require-run",
                 "--require-uvm-profile",
+                "--require-gpu-name",
+                "RTX 5060",
+                "--min-gpu-memory-mib",
+                "8000",
             ]).stdout
             self.assertIn("ok acceptance bundle", out)
             extract_dir = artifact / "extract"
@@ -185,6 +212,10 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "cuda",
                 "--require-run",
                 "--require-uvm-profile",
+                "--require-gpu-name",
+                "RTX 5060",
+                "--min-gpu-memory-mib",
+                "8000",
             ]).stdout
             self.assertIn("ok acceptance", out)
 
