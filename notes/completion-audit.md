@@ -43,6 +43,7 @@ covering:
 | Whole matrix bundle audit | `bin/lab-acceptance-matrix`, `config/acceptance/required-hosts.json` | Fresh clone dry-run and unit test cover target mapping; real completion still requires missing bundles | Ready |
 | Missing-host command generation | `lab-acceptance-matrix --next-commands` | Prints direct and SSH collection commands for each missing target | Ready |
 | Drive/USB bundle staging | `bin/lab-acceptance-stage` | Copies latest passing bundle per matrix target plus `.sha256`, stages the acceptance config, writes `STAGE-MANIFEST.json`, and supports strict full-matrix gating | Ready |
+| Drive/USB bundle import | `bin/lab-acceptance-import` | Copies staged bundles into `~/lab/_acceptance_bundles`, verifies sidecar hashes, stages the matrix config, and supports strict post-import gating | Ready |
 | SSH automation | `bin/lab-remote-acceptance` | Fresh clone remote dry-run passes; actual run requires SSH target | Ready |
 | Remote YAML dependency bootstrap | `bin/lab-remote-acceptance` | Remote script installs user-level PyYAML when `import yaml` fails | Ready |
 | Suite handoff | `bin/lab-handoff` | Includes acceptance tools; uses Python SHA256; test opens produced tarball | Done |

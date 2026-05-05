@@ -68,6 +68,7 @@ lab-acceptance-collect --profile apple --run --require-provenance --require-appl
 lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles
 lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles --next-commands
 lab-acceptance-stage --out ~/lab/_drive_stage/lab-acceptance-bundles
+lab-acceptance-import ~/lab/_drive_stage/lab-acceptance-bundles
 ```
 
 `lab-acceptance-matrix` checks all collected bundles against
@@ -79,6 +80,9 @@ Google Drive as long as the sidecar is kept with the bundle.
 the acceptance config used for verification, and `STAGE-MANIFEST.json`. The
 resulting folder can be uploaded to Google Drive or copied to USB without
 dragging along stale bundles or relying on this Mac's local config path.
+`lab-acceptance-import` copies a staged folder back into
+`~/lab/_acceptance_bundles`, verifies sidecar hashes, and prints the matrix
+result using the staged config.
 `lab-remote-acceptance` also installs PyYAML in the remote user's Python
 environment when needed, because YAML parsing is required before acceptance can
 run.

@@ -454,6 +454,7 @@ class LabToolsSmokeTests(unittest.TestCase):
             self.assertEqual(stage_manifest["staged_config"]["path"], matrix_config.name)
             stage_readme = (stage_dir / "README.md").read_text()
             self.assertIn(f"lab-acceptance-matrix --config {matrix_config.name} --bundle-dir .", stage_readme)
+            self.assertIn("lab-acceptance-import .", stage_readme)
             self.assertIn("- Complete: `no`", stage_readme)
             self.assertNotIn(f"lab-acceptance-matrix --bundle-dir {stage_dir}", stage_readme)
             env = os.environ.copy()
@@ -476,6 +477,20 @@ class LabToolsSmokeTests(unittest.TestCase):
                 check=True,
             )
             self.assertIn("complete=yes", staged_result.stdout)
+            import_dir = artifact / "imported-bundles"
+            imported = self.run_cmd([
+                "bin/lab-acceptance-import",
+                str(stage_dir),
+                "--out",
+                str(import_dir),
+                "--target",
+                "apple-m1",
+            ]).stdout
+            self.assertIn("imported_bundles=1", imported)
+            self.assertIn("complete=yes", imported)
+            self.assertTrue((import_dir / apple_bundle.name).exists())
+            self.assertTrue((import_dir / f"{apple_bundle.name}.sha256").exists())
+            self.assertTrue((import_dir / matrix_config.name).exists())
             result = subprocess.run(
                 [
                     "bin/lab-acceptance-matrix",
@@ -562,6 +577,7 @@ class LabToolsSmokeTests(unittest.TestCase):
         self.assertIn("lab-tools-install", handoff)
         self.assertIn("lab-acceptance-bundle", handoff)
         self.assertIn("lab-acceptance-collect", handoff)
+        self.assertIn("lab-acceptance-import", handoff)
         self.assertIn("lab-acceptance-matrix", handoff)
         self.assertIn("lab-acceptance-stage", handoff)
         self.assertIn("lab-remote-acceptance", handoff)
@@ -660,6 +676,7 @@ class LabToolsSmokeTests(unittest.TestCase):
                 names = tar.getnames()
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-bundle") for name in names))
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-collect") for name in names))
+            self.assertTrue(any(name.endswith("/bin/lab-acceptance-import") for name in names))
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-matrix") for name in names))
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-stage") for name in names))
             self.assertTrue(any(name.endswith("/bin/lab-remote-acceptance") for name in names))

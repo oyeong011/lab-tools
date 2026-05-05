@@ -119,6 +119,7 @@ def write_readme(out_dir, manifest):
         "```bash\n"
         "cd <copied-stage-directory>\n"
         f"lab-acceptance-matrix --config {shlex.quote(staged_config)} --bundle-dir .\n"
+        "lab-acceptance-import .\n"
         "```\n\n"
         f"- Complete: `{complete}`\n"
         f"- Missing targets: `{', '.join(missing) if missing else 'none'}`\n"
