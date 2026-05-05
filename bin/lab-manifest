@@ -33,6 +33,27 @@ def command_path(name):
     return shutil.which(name)
 
 
+def collect_tracked_files(bin_dir, config_dir):
+    names = [
+        "lab-safe-run",
+        "bench-suite",
+        "bench-suite-config",
+        "summarize-suite",
+        "suite-stats",
+        "suite-compare",
+        "lab-pipeline",
+        "lab-tools-sync",
+        "lab-tools-install",
+    ]
+    tracked = [bin_dir / name for name in names]
+    tracked.extend(sorted(bin_dir.glob("bench-*")))
+    tracked.extend(sorted(config_dir.glob("*.c")))
+    tracked.extend(sorted(config_dir.glob("*.cu")))
+    for sub in ("suites", "containers", "templates", "pipelines"):
+        tracked.extend(sorted((config_dir / sub).glob("*")))
+    return [p for p in tracked if p.exists()]
+
+
 def main():
     if len(sys.argv) < 5:
         print("Usage: lab-manifest RUN_DIR EXPERIMENT WORKDIR -- COMMAND...", file=sys.stderr)
@@ -47,26 +68,7 @@ def main():
 
     bin_dir = Path.home() / "bin"
     config_dir = Path.home() / ".config" / "lab"
-    tracked = [
-        bin_dir / "lab-safe-run",
-        bin_dir / "bench-suite",
-        bin_dir / "bench-suite-config",
-        bin_dir / "bench-cpu",
-        bin_dir / "bench-opencl",
-        bin_dir / "bench-opencl-gemm",
-        bin_dir / "bench-stream",
-        bin_dir / "bench-openblas",
-        bin_dir / "bench-sysbench",
-        bin_dir / "bench-standard-cpu",
-        bin_dir / "summarize-suite",
-        bin_dir / "lab-tools-sync",
-        config_dir / "opencl-vector-add.c",
-        config_dir / "opencl-gemm.c",
-        config_dir / "stream-triad.c",
-        config_dir / "openblas-gemm.c",
-        config_dir / "suites" / "quick.env",
-        config_dir / "suites" / "baseline.env",
-    ]
+    tracked = collect_tracked_files(bin_dir, config_dir)
 
     manifest = {
         "schema_version": 1,
@@ -84,6 +86,12 @@ def main():
                 "LAB_MAX_TEMP_C",
                 "LAB_MONITOR_INTERVAL",
                 "LAB_GEMM_SIZE",
+                "LAB_INCLUDE_CUDA",
+                "LAB_INCLUDE_UVM",
+                "LAB_WORKLOADS",
+                "LAB_UVM_MB",
+                "LAB_UVM_PATTERN",
+                "LAB_UVM_PASSES",
                 "LAB_WARMUPS",
                 "LAB_REPEATS",
                 "LAB_STREAM_ELEMENTS",
@@ -110,11 +118,17 @@ def main():
             "governors": run(["sh", "-c", "cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null | sort -u"]),
             "smt": run(["sh", "-c", "cat /sys/devices/system/cpu/smt/active 2>/dev/null || true"]),
             "turbo": run(["sh", "-c", "cat /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true"]),
+            "numa": run(["sh", "-c", "command -v numactl >/dev/null && numactl --hardware || true"]),
+            "microcode": run(["sh", "-c", "grep -m1 '^microcode' /proc/cpuinfo 2>/dev/null || true"]),
         },
         "accelerators": {
             "opencl": run(["sh", "-c", "clinfo 2>/dev/null | sed -n '1,80p'"]),
             "nvidia": run(["sh", "-c", "command -v nvidia-smi >/dev/null && nvidia-smi || true"]),
+            "nvidia_topology": run(["sh", "-c", "command -v nvidia-smi >/dev/null && nvidia-smi topo -m || true"]),
+            "nvidia_clock_power_state": run(["sh", "-c", "command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=name,pci.bus_id,pstate,clocks.gr,clocks.mem,clocks.sm,power.limit,power.draw,persistence_mode,ecc.mode.current,mig.mode.current --format=csv,noheader,nounits 2>/dev/null || true"]),
+            "nvidia_pcie": run(["sh", "-c", "command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current,pcie.link.width.max --format=csv,noheader,nounits 2>/dev/null || true"]),
             "pci": run(["lspci", "-nn"]),
+            "pci_verbose_gpu": run(["sh", "-c", "lspci -vv 2>/dev/null | sed -n '/VGA compatible controller\\|3D controller\\|Display controller/,+24p'"]),
         },
         "tool_versions": {
             name: run([path, "--version"]) if path and name in ["gcc", "python3"] else {"path": path}

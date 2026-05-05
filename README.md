@@ -7,7 +7,49 @@ Reproducibility-oriented benchmarking framework for CPU and accelerator workload
 | Profile | Hardware target | What runs |
 |---|---|---|
 | `cpu`  | CPU + iGPU OpenCL only (no NVIDIA stack) | bench-cpu, bench-standard-cpu, bench-opencl, bench-opencl-gemm |
-| `cuda` | CPU + iGPU OpenCL + NVIDIA GPU + CUDA toolkit | everything in `cpu` plus bench-cuda-vector-add, bench-cuda-gemm |
+| `cuda` | CPU + iGPU OpenCL + NVIDIA GPU + CUDA toolkit | everything in `cpu` plus bench-cuda-vector-add, bench-cuda-gemm, optional bench-cuda-uvm-access |
+
+## Research pipeline
+
+`lab-pipeline` adds a reviewer-facing planning layer on top of the existing
+suite runner. It maps research themes to supported environments, suite configs,
+workloads, tunables, metrics, and claim boundaries.
+
+```bash
+lab-pipeline list
+lab-pipeline show forest-uvm-access
+lab-pipeline review
+lab-pipeline plan consumer-accelerator-baseline --profile cpu
+lab-pipeline plan forest-uvm-access --profile cuda --sweep
+```
+
+The default matrix is installed to
+`~/.config/lab/pipelines/research-matrix.yaml`. Current status:
+
+| Track | Status | Purpose |
+|---|---|---|
+| `consumer-accelerator-baseline` | wired | CPU/OpenCL/CUDA baseline performance, energy, and reproducibility |
+| `forest-uvm-access` | wired | Forest-inspired CUDA managed-memory access-pattern probe |
+| `edge-ai-cnn-transformer` | planned | CNN/Transformer accelerator workloads |
+| `memory-hierarchy-pim` | planned | GEMV/SpMV/PIM/DRAM/address-mapping studies |
+| `multi-tenant-migration-storage` | planned | tensor migration, UVM, storage oversubscription |
+| `cluster-communication` | planned | NCCL/PXN rail and topology experiments |
+| `security-counter-cache` | planned | defensive cache/counter characterization |
+
+Important claim boundary: `bench-cuda-uvm-access` uses `cudaMallocManaged` and
+Forest-style access classes (`ls`, `hchi`, `hcli`, `lc`) to probe real hardware
+UVM symptoms. It is not an implementation of Forest's modified UVM driver,
+access-time tracker, heterogeneous TBNp, or pseudo-LRU eviction. Page-fault,
+migration, re-fault, and thrashing claims require CUPTI/Nsight/driver counters
+or simulator instrumentation in addition to this harness.
+
+Validate configs and generated suites with:
+
+```bash
+lab-validate matrix ~/.config/lab/pipelines/research-matrix.yaml
+lab-validate suite-config ~/.config/lab/suites/forest-uvm.yaml
+lab-validate suite-dir <suite_dir>
+```
 
 The profile auto-detects from `nvidia-smi` + `nvcc`. Override:
 
@@ -92,6 +134,9 @@ suite-compare <hostA_suite_dir> <hostB_suite_dir> --md compare.md
 - `~/.config/lab/containers/Containerfile.cpu` — Ubuntu 24.04 + clinfo/OpenCL/OpenBLAS/sysbench/python
 - `~/.config/lab/containers/Containerfile.cuda` — `nvidia/cuda:13.1.0-devel-ubuntu24.04` + same toolchain (Blackwell sm_120 ready)
 
+Both containers include PyYAML for suite parsing and SciPy for Mann-Whitney
+statistics in `suite-compare`.
+
 ```bash
 lab-container-build cpu          # cpu profile
 lab-container-build cuda         # cuda profile
@@ -104,10 +149,11 @@ Active source-of-truth is `~/bin/` and `~/.config/lab/`. After editing, run `lab
 
 ## Out of scope
 
-This framework targets CPU/iGPU + ≤8GB consumer-tier NVIDIA. It does *not* attempt to support:
+This framework targets commodity Linux CPU/iGPU and consumer-tier NVIDIA. It does *not* attempt to support:
 
-- Multi-GPU / >8GB workloads (no large LLM training, no H100 baselines)
+- Multi-GPU / large LLM training / H100 baselines
 - AMD ROCm or Intel oneAPI/SYCL (stubs only)
-- Distributed/HPC measurement
+- Distributed/HPC measurement, except planned NCCL/PXN scaffolding
+- macOS execution today; Apple Silicon is a planned profile requiring Metal/MPS and powermetrics work
 
 For workloads beyond the local hardware envelope, use `lab-handoff` to package a suite and run on cloud-by-hour GPUs (RunPod / Lambda / Vast.ai) or shared cluster resources (KISTI Nurion, NIPA AI 바우처, university GPU clusters).

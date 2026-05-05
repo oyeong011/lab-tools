@@ -25,6 +25,7 @@ declare -A WORKLOAD_CMD=(
   [opencl-gemm]=bench-opencl-gemm
   [cuda-vector]=bench-cuda-vector-add
   [cuda-gemm]=bench-cuda-gemm
+  [cuda-uvm]=bench-cuda-uvm-access
 )
 declare -A WORKLOAD_LABEL=(
   [cpu]="CPU"
@@ -33,11 +34,34 @@ declare -A WORKLOAD_LABEL=(
   [opencl-gemm]="OpenCL GEMM"
   [cuda-vector]="CUDA"
   [cuda-gemm]="CUDA GEMM"
+  [cuda-uvm]="CUDA UVM access-pattern"
 )
 
 PROFILE="$(lab-profile 2>/dev/null || printf cpu)"
-if [ "${LAB_INCLUDE_CUDA:-auto}" = "1" ] || { [ "${LAB_INCLUDE_CUDA:-auto}" = "auto" ] && [ "$PROFILE" = cuda ]; }; then
-  WORKLOADS+=(cuda-vector cuda-gemm)
+if [ -n "${LAB_WORKLOADS:-}" ]; then
+  WORKLOADS=()
+  IFS=',' read -r -a requested_workloads <<< "$LAB_WORKLOADS"
+  for requested in "${requested_workloads[@]}"; do
+    requested="$(printf '%s' "$requested" | tr -d '[:space:]')"
+    [ -n "$requested" ] || continue
+    if [ -z "${WORKLOAD_CMD[$requested]+x}" ]; then
+      printf 'Unknown workload in LAB_WORKLOADS: %s\n' "$requested" >&2
+      printf 'Known workloads: %s\n' "${!WORKLOAD_CMD[*]}" >&2
+      exit 2
+    fi
+    WORKLOADS+=("$requested")
+  done
+  if [ "${#WORKLOADS[@]}" -eq 0 ]; then
+    printf 'LAB_WORKLOADS did not contain any valid workload names.\n' >&2
+    exit 2
+  fi
+else
+  if [ "${LAB_INCLUDE_CUDA:-auto}" = "1" ] || { [ "${LAB_INCLUDE_CUDA:-auto}" = "auto" ] && [ "$PROFILE" = cuda ]; }; then
+    WORKLOADS+=(cuda-vector cuda-gemm)
+  fi
+  if [ "${LAB_INCLUDE_UVM:-0}" = "1" ]; then
+    WORKLOADS+=(cuda-uvm)
+  fi
 fi
 
 mkdir -p "$SUITE_DIR"
@@ -75,7 +99,7 @@ run_one() {
 
 if [ "$WARMUPS" -gt 0 ]; then
   for i in $(seq 1 "$WARMUPS"); do
-    for w in cpu opencl opencl-gemm; do
+    for w in "${WORKLOADS[@]}"; do
       lab-safe-run "$EXPERIMENT" -- "${WORKLOAD_CMD[$w]}" > "$SUITE_DIR/warmup-${w}-${i}.log" 2>&1 || true
     done
   done

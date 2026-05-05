@@ -1,0 +1,11 @@
+experiment: forest-uvm-access
+warmups: 1
+repeats: 5
+env:
+  LAB_WORKLOADS: cuda-uvm
+  LAB_MONITOR_INTERVAL: 1
+  LAB_MAX_TEMP_C: 85
+  LAB_TIMEOUT: 20m
+  LAB_UVM_MB: 512
+  LAB_UVM_PATTERN: ls
+  LAB_UVM_PASSES: 2

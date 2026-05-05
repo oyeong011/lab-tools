@@ -28,17 +28,19 @@ HANDOFF_DIR = LAB / "_handoffs"
 BIN_FILES = [
     "bench-cpu", "bench-openblas", "bench-opencl", "bench-opencl-gemm",
     "bench-standard-cpu", "bench-stream", "bench-suite", "bench-suite-config",
-    "bench-sysbench", "lab-manifest", "lab-pin-system", "lab-safe-run",
+    "bench-sysbench", "bench-cuda-vector-add", "bench-cuda-gemm", "bench-cuda-uvm-access",
+    "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-doctor",
+    "lab-container-build", "lab-container-run", "lab-pipeline", "lab-validate",
     "render-suite-report", "render-method-section", "render-repro-checklist",
     "sensor-snapshot", "summarize-suite", "suite-stats", "suite-compare",
     "thermal-check", "ai-accel-check", "hw-report", "monitor-run",
+    "nvml-check", "nvidia-check", "lab-nvidia-ready",
 ]
 
 CONFIG_FILES = [
     "opencl-vector-add.c", "opencl-gemm.c", "stream-triad.c", "openblas-gemm.c",
+    "cuda-vector-add.cu", "cuda-gemm.cu", "cuda-uvm-access.cu",
 ]
-
-SUITE_CONFIG_FILES = ["quick.yaml", "quick.env", "baseline.yaml", "baseline.env"]
 
 
 def referenced_runs(suite: Path):
@@ -69,8 +71,8 @@ def write_readme(staging: Path, suite: Path, runs, manifest_excerpt):
         f.write("- `suite/` — full suite directory (summary.csv, stats.csv, monitor logs, reports)\n")
         f.write("- `runs/` — per-run directories referenced by summary.csv\n")
         f.write("- `bin/` — benchmark and pipeline scripts (drop into `~/bin` on the target host)\n")
-        f.write("- `config/lab/` — OpenCL/STREAM/OpenBLAS source kernels and suite configs\n")
-        f.write("- `Containerfile.cpu` — CPU/OpenCL container definition\n")
+        f.write("- `config/lab/` — OpenCL/CUDA/STREAM/OpenBLAS sources, suite configs, and pipeline matrices\n")
+        f.write("- `config/lab/containers/` — CPU/OpenCL and CUDA container definitions\n")
         f.write("- `manifest-excerpt.json` — system snapshot for cross-host comparison\n\n")
         f.write("## Reproduction on a target host\n\n")
         f.write("```bash\n")
@@ -78,9 +80,10 @@ def write_readme(staging: Path, suite: Path, runs, manifest_excerpt):
         f.write("cd ~/lab-handoff/<bundle-name>\n")
         f.write("# Install scripts\n")
         f.write("install -Dm755 bin/* ~/bin/\n")
-        f.write("install -Dm644 -t ~/.config/lab/ config/lab/*.c\n")
+        f.write("install -Dm644 -t ~/.config/lab/ config/lab/*.c config/lab/*.cu\n")
         f.write("install -Dm644 -t ~/.config/lab/suites/ config/lab/suites/* 2>/dev/null || true\n")
-        f.write("install -Dm644 -t ~/.config/lab/containers/ Containerfile.cpu\n")
+        f.write("install -Dm644 -t ~/.config/lab/pipelines/ config/lab/pipelines/* 2>/dev/null || true\n")
+        f.write("install -Dm644 -t ~/.config/lab/containers/ config/lab/containers/* 2>/dev/null || true\n")
         f.write("# Verify\n")
         f.write("lab-doctor\n")
         f.write("# Build container if podman available\n")
@@ -159,16 +162,14 @@ def stage(suite: Path, include_runs: bool, bundle_name: str):
         src = HOME / ".config" / "lab" / name
         if src.exists():
             shutil.copy2(src, cfg_stage / name)
-    suite_cfg = cfg_stage / "suites"
-    suite_cfg.mkdir()
-    for name in SUITE_CONFIG_FILES:
-        src = HOME / ".config" / "lab" / "suites" / name
-        if src.exists():
-            shutil.copy2(src, suite_cfg / name)
-
-    cf = HOME / ".config" / "lab" / "containers" / "Containerfile.cpu"
-    if cf.exists():
-        shutil.copy2(cf, staging / "Containerfile.cpu")
+    for sub in ("suites", "containers", "pipelines", "templates"):
+        src_dir = HOME / ".config" / "lab" / sub
+        dst_dir = cfg_stage / sub
+        dst_dir.mkdir()
+        if src_dir.exists():
+            for src in sorted(src_dir.iterdir()):
+                if src.is_file():
+                    shutil.copy2(src, dst_dir / src.name)
 
     manifest_excerpt = build_manifest_excerpt(runs)
     if manifest_excerpt:

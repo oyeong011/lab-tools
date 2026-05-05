@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""Plan reproducible experiment campaigns from the lab research matrix."""
+import argparse
+import itertools
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError as exc:
+    print("python3-yaml/PyYAML is required for lab-pipeline", file=sys.stderr)
+    raise SystemExit(127) from exc
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_MATRIX_PATHS = [
+    Path(os.environ.get("LAB_PIPELINE_MATRIX", "")) if os.environ.get("LAB_PIPELINE_MATRIX") else None,
+    Path.home() / ".config" / "lab" / "pipelines" / "research-matrix.yaml",
+    REPO_ROOT / "config" / "pipelines" / "research-matrix.yaml",
+]
+
+
+def slugify(text):
+    value = re.sub(r"[^a-zA-Z0-9._-]+", "-", text.strip().lower())
+    return value.strip("-")
+
+
+def load_matrix(path=None):
+    candidates = [Path(path)] if path else [p for p in DEFAULT_MATRIX_PATHS if p]
+    for candidate in candidates:
+        if candidate.exists():
+            with candidate.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            return data, candidate
+    searched = ", ".join(str(p) for p in candidates)
+    raise SystemExit(f"pipeline matrix not found; searched: {searched}")
+
+
+def detect_profile():
+    try:
+        p = subprocess.run(["lab-profile"], text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3)
+        if p.returncode == 0 and p.stdout.strip():
+            return p.stdout.strip()
+    except Exception:
+        pass
+    return "cpu"
+
+
+def known_workload_supported(workload, profile):
+    if workload.startswith("cuda-"):
+        return profile == "cuda"
+    return True
+
+
+def workload_env(track, profile):
+    workloads = [w for w in track.get("workloads", []) if isinstance(w, str)]
+    runnable = [w for w in workloads if known_workload_supported(w, profile)]
+    known_prefixes = ("cpu", "standard-cpu", "opencl", "cuda")
+    runnable = [w for w in runnable if w.startswith(known_prefixes)]
+    if not runnable:
+        return {}
+    return {"LAB_WORKLOADS": ",".join(runnable)}
+
+
+def expand_tunables(track, sweep):
+    tunables = track.get("tunables") or {}
+    if not tunables:
+        return [({}, "default")]
+
+    keys = list(tunables)
+    values = []
+    for key in keys:
+        raw = tunables[key].get("values", [])
+        if not raw:
+            raw = [""]
+        values.append(raw if sweep else raw[:1])
+
+    combos = []
+    for combo in itertools.product(*values):
+        env = {key: str(value) for key, value in zip(keys, combo)}
+        suffix = "-".join(f"{slugify(k.replace('LAB_', '').lower())}-{slugify(str(v))}" for k, v in env.items())
+        combos.append((env, suffix or "default"))
+    return combos
+
+
+def suite_doc(track_name, track, profile, env):
+    title = track.get("title", track_name)
+    guardrails = track.get("reviewer_guardrails", [])
+    lines = [
+        f"# {title}",
+        "",
+        f"- Track: `{track_name}`",
+        f"- Status: `{track.get('status', 'unknown')}`",
+        f"- Profile: `{profile}`",
+        f"- Generated: `{datetime.now().isoformat(timespec='seconds')}`",
+        "",
+        "## Environment",
+        "",
+    ]
+    for key, value in sorted(env.items()):
+        lines.append(f"- `{key}={value}`")
+    if guardrails:
+        lines.extend(["", "## Reviewer Guardrails", ""])
+        for item in guardrails:
+            lines.append(f"- {item}")
+    lines.extend([
+        "",
+        "## Claim Boundary",
+        "",
+        "- Treat generated suites as reproducible campaign scaffolding, not as proof of an architecture mechanism by themselves.",
+        "- Mechanism claims require mechanism counters or simulator/driver instrumentation named in the track guardrails.",
+        "- Cross-host results must report host identity as an experimental factor.",
+    ])
+    return "\n".join(lines) + "\n"
+
+
+def make_suite(track_name, track, profile, env, suffix):
+    suite_env = {
+        "LAB_MONITOR_INTERVAL": "1",
+        "LAB_MAX_TEMP_C": "85",
+    }
+    suite_env.update(workload_env(track, profile))
+    suite_env.update(env)
+
+    repeats = 5 if track_name == "forest-uvm-access" else 10
+    warmups = 1 if track_name == "forest-uvm-access" else 3
+    experiment = slugify(track_name if suffix == "default" else f"{track_name}-{suffix}")
+    return {
+        "experiment": experiment,
+        "warmups": warmups,
+        "repeats": repeats,
+        "env": suite_env,
+    }
+
+
+def cmd_list(args):
+    matrix, path = load_matrix(args.matrix)
+    print(f"matrix: {path}")
+    print("\nEnvironments:")
+    for name, env in sorted((matrix.get("environments") or {}).items()):
+        print(f"  {name:32s} status={env.get('status', 'unknown')} profile={env.get('profile', '')}")
+    print("\nTracks:")
+    for name, track in sorted((matrix.get("tracks") or {}).items()):
+        print(f"  {name:32s} status={track.get('status', 'unknown')} suite={track.get('suite', '-')}")
+
+
+def cmd_show(args):
+    matrix, path = load_matrix(args.matrix)
+    track = (matrix.get("tracks") or {}).get(args.track)
+    if not track:
+        raise SystemExit(f"unknown track: {args.track}")
+    print(yaml.safe_dump({args.track: track}, sort_keys=False))
+
+
+def cmd_review(args):
+    matrix, _ = load_matrix(args.matrix)
+    tracks = matrix.get("tracks") or {}
+    selected = [args.track] if args.track else sorted(tracks)
+    for name in selected:
+        track = tracks.get(name)
+        if not track:
+            raise SystemExit(f"unknown track: {name}")
+        print(f"## {name} ({track.get('status', 'unknown')})")
+        for item in track.get("reviewer_guardrails", []):
+            print(f"- {item}")
+        if track.get("status") != "wired":
+            print("- Status is planned: do not report performance claims until workloads, counters, and tests are wired.")
+        print()
+
+
+def cmd_plan(args):
+    matrix, matrix_path = load_matrix(args.matrix)
+    track = (matrix.get("tracks") or {}).get(args.track)
+    if not track:
+        raise SystemExit(f"unknown track: {args.track}")
+
+    profile = args.profile or detect_profile()
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = Path(args.out) if args.out else Path.home() / "lab" / "_plans" / f"{slugify(args.track)}-{timestamp}"
+
+    combos = expand_tunables(track, args.sweep)
+    print(f"matrix: {matrix_path}")
+    print(f"track: {args.track}")
+    print(f"profile: {profile}")
+    print(f"status: {track.get('status', 'unknown')}")
+
+    if track.get("status") != "wired":
+        print("planned track only; no runnable suite files generated")
+        print("reviewer guardrails:")
+        for item in track.get("reviewer_guardrails", []):
+            print(f"  - {item}")
+        return
+
+    commands = []
+    if not args.dry_run:
+        (out_dir / "suites").mkdir(parents=True, exist_ok=True)
+
+    runbook_lines = [
+        f"# Experiment Plan: {track.get('title', args.track)}",
+        "",
+        f"- Matrix: `{matrix_path}`",
+        f"- Track: `{args.track}`",
+        f"- Profile: `{profile}`",
+        f"- Sweep: `{args.sweep}`",
+        f"- Generated: `{datetime.now().isoformat(timespec='seconds')}`",
+        "",
+        "## Preflight",
+        "",
+        "```bash",
+        "bash bin/lab-tools-install",
+        "lab-doctor",
+        "sudo lab-pin-system enable-rapl   # Intel hosts, once per boot",
+        "sudo lab-pin-system pin",
+        "```",
+        "",
+        "## Suites",
+        "",
+    ]
+
+    for env, suffix in combos:
+        suite = make_suite(args.track, track, profile, env, suffix)
+        filename = f"{suite['experiment']}.yaml"
+        suite_path = out_dir / "suites" / filename
+        doc = suite_doc(args.track, track, profile, suite["env"])
+        if not args.dry_run:
+            with suite_path.open("w", encoding="utf-8") as f:
+                yaml.safe_dump(suite, f, sort_keys=False)
+            with (suite_path.with_suffix(".md")).open("w", encoding="utf-8") as f:
+                f.write(doc)
+        commands.append(f"bench-suite-config {suite_path}")
+        runbook_lines.extend([
+            f"### `{suite['experiment']}`",
+            "",
+            "```bash",
+            f"bench-suite-config {suite_path}",
+            "```",
+            "",
+        ])
+
+    runbook_lines.extend([
+        "## Cleanup",
+        "",
+        "```bash",
+        "sudo lab-pin-system restore",
+        "```",
+        "",
+        "## Analysis",
+        "",
+        "- Use `suite-compare A B --md compare.md` only between suites whose host and profile differences are intentional experimental factors.",
+        "- Use `stats.csv`, `method.md`, and `reproducibility.md` as the first reviewer-facing artifacts.",
+    ])
+
+    if not args.dry_run:
+        with (out_dir / "runbook.md").open("w", encoding="utf-8") as f:
+            f.write("\n".join(runbook_lines) + "\n")
+        print(f"wrote: {out_dir}")
+    else:
+        print(f"dry-run output directory: {out_dir}")
+    print("commands:")
+    for command in commands:
+        print(f"  {command}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--matrix", help="Path to research-matrix.yaml")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("list", help="List environments and tracks")
+    p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("show", help="Show one track")
+    p.add_argument("track")
+    p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("review", help="Print reviewer guardrails")
+    p.add_argument("track", nargs="?")
+    p.set_defaults(func=cmd_review)
+
+    p = sub.add_parser("plan", help="Generate suite configs and a runbook")
+    p.add_argument("track")
+    p.add_argument("--profile", choices=["cpu", "cuda", "apple", "cluster"])
+    p.add_argument("--sweep", action="store_true", help="Expand all tunable values")
+    p.add_argument("--out", help="Output directory")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_plan)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

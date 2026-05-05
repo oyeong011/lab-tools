@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""Validate lab-tools configs and generated suite artifacts."""
+import argparse
+import csv
+import json
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError as exc:
+    print("python3-yaml/PyYAML is required for lab-validate", file=sys.stderr)
+    raise SystemExit(127) from exc
+
+
+SUMMARY_REQUIRED = {"workload", "run", "status", "run_dir", "duration_s", "phase"}
+STATS_REQUIRED = {"workload", "phase", "metric", "n", "mean", "median", "quality"}
+RESULT_REQUIRED = {"started_at", "ended_at", "exit_code", "status"}
+ALLOWED_ENV = {
+    "EXPERIMENT",
+    "LAB_WARMUPS",
+    "LAB_REPEATS",
+    "LAB_MONITOR_INTERVAL",
+    "LAB_MAX_TEMP_C",
+    "LAB_STREAM_ELEMENTS",
+    "LAB_STREAM_REPEATS",
+    "LAB_OPENBLAS_SIZE",
+    "LAB_OPENBLAS_REPEATS",
+    "LAB_SYSBENCH_THREADS",
+    "LAB_SYSBENCH_TIME",
+    "LAB_GEMM_SIZE",
+    "LAB_INCLUDE_CUDA",
+    "LAB_INCLUDE_UVM",
+    "LAB_WORKLOADS",
+    "LAB_UVM_MB",
+    "LAB_UVM_PATTERN",
+    "LAB_UVM_PASSES",
+    "OPENBLAS_NUM_THREADS",
+    "OMP_NUM_THREADS",
+    "LAB_CPUSET",
+    "LAB_TIMEOUT",
+    "LAB_SHUFFLE",
+    "LAB_SHUFFLE_SEED",
+}
+
+
+def fail(message):
+    print(f"error: {message}", file=sys.stderr)
+    return 1
+
+
+def load_yaml(path):
+    with Path(path).open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def validate_suite_config(path):
+    data = load_yaml(path)
+    if not isinstance(data, dict):
+        return fail("suite config must be a mapping")
+    if "experiment" not in data:
+        return fail("suite config missing experiment")
+    if "env" in data:
+        if not isinstance(data["env"], dict):
+            return fail("suite config env must be a mapping")
+        unknown = sorted(set(map(str, data["env"])) - ALLOWED_ENV)
+        if unknown:
+            return fail(f"unsupported env keys: {', '.join(unknown)}")
+    for key in ("warmups", "repeats"):
+        if key in data and int(data[key]) < 0:
+            return fail(f"{key} must be non-negative")
+    print(f"ok suite-config {path}")
+    return 0
+
+
+def validate_matrix(path):
+    data = load_yaml(path)
+    for key in ("schema_version", "environments", "tracks"):
+        if key not in data:
+            return fail(f"matrix missing {key}")
+    for name, track in (data.get("tracks") or {}).items():
+        if "status" not in track:
+            return fail(f"track {name} missing status")
+        if "reviewer_guardrails" not in track:
+            return fail(f"track {name} missing reviewer_guardrails")
+    print(f"ok matrix {path}")
+    return 0
+
+
+def read_csv_header(path):
+    with Path(path).open(newline="") as f:
+        reader = csv.reader(f)
+        return set(next(reader))
+
+
+def validate_suite_dir(path):
+    suite = Path(path)
+    if not suite.is_dir():
+        return fail(f"not a directory: {suite}")
+    summary = suite / "summary.csv"
+    stats = suite / "stats.csv"
+    if not summary.exists():
+        return fail("suite missing summary.csv")
+    missing = SUMMARY_REQUIRED - read_csv_header(summary)
+    if missing:
+        return fail(f"summary.csv missing columns: {', '.join(sorted(missing))}")
+    if stats.exists():
+        missing = STATS_REQUIRED - read_csv_header(stats)
+        if missing:
+            return fail(f"stats.csv missing columns: {', '.join(sorted(missing))}")
+    checked_results = 0
+    with summary.open(newline="") as f:
+        for row in csv.DictReader(f):
+            rd = (row.get("run_dir") or "").strip()
+            if not rd:
+                continue
+            result = Path(rd) / "result.json"
+            manifest = Path(rd) / "manifest.json"
+            if result.exists():
+                data = json.load(result.open())
+                missing = RESULT_REQUIRED - set(data)
+                if missing:
+                    return fail(f"{result} missing fields: {', '.join(sorted(missing))}")
+                checked_results += 1
+            if manifest.exists():
+                data = json.load(manifest.open())
+                if data.get("schema_version") != 1:
+                    return fail(f"{manifest} has unsupported schema_version")
+    print(f"ok suite-dir {suite} results_checked={checked_results}")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("suite-config")
+    p.add_argument("path")
+    p = sub.add_parser("matrix")
+    p.add_argument("path")
+    p = sub.add_parser("suite-dir")
+    p.add_argument("path")
+    args = parser.parse_args()
+    if args.cmd == "suite-config":
+        return validate_suite_config(args.path)
+    if args.cmd == "matrix":
+        return validate_matrix(args.path)
+    if args.cmd == "suite-dir":
+        return validate_suite_dir(args.path)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

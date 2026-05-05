@@ -50,6 +50,21 @@ sudo lab-pin-system restore
 ls ~/lab/cpu-ai-kernel-baseline/suites/  # 만들어진 디렉터리 확인
 ```
 
+### 범용 연구 파이프라인 확인
+```bash
+lab-pipeline list
+lab-pipeline review
+lab-pipeline plan consumer-accelerator-baseline --profile cpu --dry-run
+lab-pipeline plan forest-uvm-access --profile cuda --sweep --dry-run
+lab-validate matrix ~/.config/lab/pipelines/research-matrix.yaml
+```
+
+`forest-uvm-access`는 Forest 논문에서 중요한 managed memory access
+pattern/oversubscription 축을 실제 CUDA UVM 마이크로프로브로 준비한
+경로입니다. 단, 이것은 Forest의 UVM driver/hardware 변경 구현이 아니므로
+page fault, migration, thrashing 주장은 CUPTI/Nsight/driver counter 또는
+시뮬레이터 계측과 함께 써야 합니다.
+
 ## 2. 캠페인 산출물
 
 `bench-suite`(또는 `bench-suite-config`)를 한 번 돌리면 `~/lab/<experiment>/suites/<id>/`에 다음이 생깁니다:

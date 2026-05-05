@@ -2,7 +2,31 @@
 set -euo pipefail
 PATH="$HOME/bin:$PATH"
 
-CONFIG_NAME="${1:-quick}"
+DRY_RUN=0
+CONFIG_NAME="quick"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bench-suite-config [--dry-run] [CONFIG]
+
+CONFIG may be a path or a config name under ~/.config/lab/suites.
+--dry-run parses the config and prints the resolved environment without
+creating an experiment or running benchmarks.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help|help) usage; exit 0 ;;
+    *)
+      CONFIG_NAME="$1"
+      shift
+      ;;
+  esac
+done
+
 CONFIG_PATH="$CONFIG_NAME"
 if [ ! -f "$CONFIG_PATH" ]; then
   if [ -f "$HOME/.config/lab/suites/${CONFIG_NAME%.yaml}.yaml" ]; then
@@ -61,6 +85,12 @@ allowed = {
     "LAB_SYSBENCH_THREADS",
     "LAB_SYSBENCH_TIME",
     "LAB_GEMM_SIZE",
+    "LAB_INCLUDE_CUDA",
+    "LAB_INCLUDE_UVM",
+    "LAB_WORKLOADS",
+    "LAB_UVM_MB",
+    "LAB_UVM_PATTERN",
+    "LAB_UVM_PASSES",
     "OPENBLAS_NUM_THREADS",
     "OMP_NUM_THREADS",
     "LAB_CPUSET",
@@ -91,5 +121,11 @@ printf 'Using suite config: %s\n' "$CONFIG_PATH"
 printf 'Experiment: %s\n' "$EXPERIMENT"
 printf 'Warmups: %s\n' "${LAB_WARMUPS:-0}"
 printf 'Repeats: %s\n' "$REPEATS"
+if [ "$DRY_RUN" -eq 1 ]; then
+  printf 'Dry-run: yes\n'
+  printf 'Resolved environment:\n'
+  env | grep -E '^(EXPERIMENT|LAB_[A-Z0-9_]*|OPENBLAS_NUM_THREADS|OMP_NUM_THREADS)=' | sort | sed 's/^/  /'
+  exit 0
+fi
 
 bench-suite "$EXPERIMENT" "$REPEATS"

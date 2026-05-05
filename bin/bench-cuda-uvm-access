@@ -2,16 +2,26 @@
 set -euo pipefail
 
 LAB_HOME="${LAB_HOME:-$HOME/lab}"
-N="${1:-${LAB_CUDA_VECTOR_N:-16777216}}"
-SRC="$HOME/.config/lab/cuda-vector-add.cu"
+MB="${1:-${LAB_UVM_MB:-512}}"
+PATTERN="${LAB_UVM_PATTERN:-ls}"
+PASSES="${LAB_UVM_PASSES:-2}"
+SRC="$HOME/.config/lab/cuda-uvm-access.cu"
 BUILD_DIR="$LAB_HOME/_benchmarks/cuda"
-BIN="$BUILD_DIR/cuda-vector-add"
-OUT="$BUILD_DIR/cuda-vector-add-${N}-$(date +%Y%m%d-%H%M%S).txt"
+BIN="$BUILD_DIR/cuda-uvm-access"
+OUT="$BUILD_DIR/cuda-uvm-${PATTERN}-${MB}mb-$(date +%Y%m%d-%H%M%S).txt"
 
 if ! command -v nvcc >/dev/null 2>&1; then
   printf 'nvcc not available — install CUDA toolkit or run inside lab-cuda container.\n' >&2
   exit 127
 fi
+
+case "$PATTERN" in
+  ls|hchi|hcli|lc) ;;
+  *)
+    printf 'Unsupported LAB_UVM_PATTERN=%s (expected: ls, hchi, hcli, lc)\n' "$PATTERN" >&2
+    exit 2
+    ;;
+esac
 
 mkdir -p "$BUILD_DIR"
 if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
@@ -20,5 +30,5 @@ if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
 else
   printf 'Build: reused %s\n' "$BIN"
 fi
-"$BIN" "$N" | tee "$OUT"
+"$BIN" "$MB" "$PATTERN" "$PASSES" | tee "$OUT"
 printf '\nSaved: %s\n' "$OUT"

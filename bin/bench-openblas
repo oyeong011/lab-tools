@@ -5,12 +5,18 @@ LAB_HOME="${LAB_HOME:-$HOME/lab}"
 SIZE="${1:-${LAB_OPENBLAS_SIZE:-1024}}"
 REPEATS="${2:-${LAB_OPENBLAS_REPEATS:-3}}"
 THREADS="${OPENBLAS_NUM_THREADS:-$(nproc)}"
+SRC="$HOME/.config/lab/openblas-gemm.c"
 BUILD_DIR="$LAB_HOME/_benchmarks/cpu"
 BIN="$BUILD_DIR/openblas-gemm"
 OUT="$BUILD_DIR/openblas-gemm-${SIZE}-$(date +%Y%m%d-%H%M%S).txt"
 
 mkdir -p "$BUILD_DIR"
-gcc -O3 -march=native "$HOME/.config/lab/openblas-gemm.c" -lopenblas -lm -o "$BIN"
+if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
+  gcc -O3 -march=native "$SRC" -lopenblas -lm -o "$BIN"
+  printf 'Build: compiled %s\n' "$BIN"
+else
+  printf 'Build: reused %s\n' "$BIN"
+fi
 OPENBLAS_NUM_THREADS="$THREADS" "$BIN" "$SIZE" "$REPEATS" | tee "$OUT"
 printf '\nOPENBLAS_NUM_THREADS=%s\n' "$THREADS" | tee -a "$OUT"
 printf 'Saved: %s\n' "$OUT"

@@ -1,0 +1,274 @@
+schema_version: 1
+name: lab-tools research experiment matrix
+sources:
+  - id: forest_gpu
+    title: "Forest: Access-aware GPU UVM Management"
+    venue: ISCA 2025
+    local_pdf: /Users/young/Downloads/Forest_gpu.pdf
+    experiment_axes:
+      - UVM oversubscription ratio
+      - access pattern class
+      - prefetch or migration aggressiveness
+      - page fault and page thrashing behavior
+      - GPU architecture sensitivity
+  - id: koo_lab_publications
+    title: User-provided Gunjae Koo lab publication list
+    experiment_axes:
+      - embedded GPU and edge accelerator performance
+      - GPU memory hierarchy and unified memory
+      - PIM, GEMV, SpMV, sparse-dense kernels
+      - multi-tenant inference and tensor migration scheduling
+      - DRAM row activation and row-buffer policy
+      - cluster communication with NCCL/PXN
+      - reproducible artifact packaging
+
+environments:
+  linux-cpu-opencl:
+    status: wired
+    host_examples:
+      - Ubuntu desktop with Intel CPU and Intel iGPU
+    profile: cpu
+    setup:
+      - bash bin/lab-tools-install
+      - lab-profile set cpu
+      - sudo lab-pin-system enable-rapl
+      - sudo lab-pin-system pin
+    required_tools:
+      - gcc
+      - clinfo
+      - OpenCL ICD
+      - OpenBLAS
+      - sysbench
+      - python3-yaml
+    measurable_resources:
+      - CPU time
+      - Intel RAPL package/core/uncore/DRAM energy
+      - OpenCL kernel time and bandwidth
+  linux-cuda-nvidia:
+    status: wired
+    host_examples:
+      - Ubuntu desktop with RTX 5060 8GB
+      - Ubuntu desktop with RTX 5080 16GB
+    profile: cuda
+    setup:
+      - bash bin/lab-tools-install
+      - lab-profile set cuda
+      - sudo lab-pin-system enable-rapl
+      - sudo lab-pin-system pin
+    required_tools:
+      - nvidia-smi
+      - nvcc
+      - CUDA toolkit
+      - gcc
+      - python3-yaml
+    measurable_resources:
+      - CUDA kernel time
+      - CUDA bandwidth or GFLOP/s
+      - NVIDIA power and energy through NVML/nvidia-smi
+      - Intel RAPL package/core/uncore/DRAM energy
+      - GPU temperature
+  darwin-apple-silicon:
+    status: planned
+    host_examples:
+      - MacBook M1
+      - MacBook M4
+    profile: apple
+    setup:
+      - planned: add Metal/MPS kernels and powermetrics collection
+    required_tools:
+      - clang
+      - Metal or MPS workload path
+      - powermetrics
+    measurable_resources:
+      - wall time
+      - Apple GPU counters where available
+      - package power through powermetrics
+  cluster-nccl:
+    status: planned
+    host_examples:
+      - multi-node GPU cluster with NCCL
+    profile: cluster
+    setup:
+      - planned: add NCCL microbench and topology capture
+    required_tools:
+      - nccl-tests
+      - nvidia-smi topo
+      - mpirun or torchrun
+    measurable_resources:
+      - all-reduce/all-gather bandwidth
+      - latency
+      - rail utilization
+
+tracks:
+  consumer-accelerator-baseline:
+    title: Consumer CPU/iGPU/NVIDIA accelerator baseline
+    status: wired
+    environments:
+      - linux-cpu-opencl
+      - linux-cuda-nvidia
+    suite: baseline
+    workloads:
+      - cpu
+      - standard-cpu
+      - opencl
+      - opencl-gemm
+      - cuda-vector
+      - cuda-gemm
+    metrics:
+      lower_is_better:
+        - scalar_fma_mean_s
+        - memory_walk_mean_s
+        - sha256_mean_s
+        - opencl_kernel_s
+        - cuda_kernel_s
+        - duration_s
+        - pkg_energy_j
+        - nvidia_energy_j
+      higher_is_better:
+        - stream_triad_mb_s
+        - openblas_gflops
+        - sysbench_events_s
+        - opencl_bandwidth_gbs
+        - gemm_gflops
+        - cuda_bandwidth_gbs
+        - cuda_gemm_gflops
+    reviewer_guardrails:
+      - Report cold and steady phases separately.
+      - Use confidence intervals and effect sizes; do not rank devices by a single run.
+      - State that CPU/OpenCL/CUDA kernels are microbenchmarks, not full application claims.
+
+  forest-uvm-access:
+    title: Forest-inspired CUDA UVM access-pattern probe
+    status: wired
+    environments:
+      - linux-cuda-nvidia
+    suite: forest-uvm
+    workloads:
+      - cuda-uvm
+    tunables:
+      LAB_UVM_PATTERN:
+        values: [ls, hchi, hcli, lc]
+        meaning: "Forest-style access classes: linear streaming, high-coverage high-intensity, high-coverage low-intensity, low coverage."
+      LAB_UVM_MB:
+        values: [512, 2048, 6144, 12288]
+        meaning: Managed-memory allocation size. Values above local VRAM intentionally stress UVM oversubscription.
+      LAB_UVM_PASSES:
+        values: [1, 2, 4]
+    metrics:
+      lower_is_better:
+        - cuda_kernel_s
+        - duration_s
+        - nvidia_energy_j
+      higher_is_better:
+        - cuda_bandwidth_gbs
+    reviewer_guardrails:
+      - This is a real-hardware UVM symptom probe, not an implementation of Forest's modified UVM driver or hardware ATT.
+      - Use it to choose workloads, memory sizes, and access classes before simulator or kernel-driver work.
+      - Claims about page-fault counts, migration counts, and TBNp policy require CUPTI/driver counters or simulator instrumentation.
+
+  edge-ai-cnn-transformer:
+    title: Edge AI CNN/Transformer accelerator workload family
+    status: planned
+    environments:
+      - linux-cuda-nvidia
+      - darwin-apple-silicon
+    workloads:
+      - CNN inference/training kernels
+      - transformer attention and MLP kernels
+      - quantized/log-arithmetic proxy kernels
+    metrics:
+      lower_is_better:
+        - latency
+        - joules_per_inference
+        - memory_traffic
+      higher_is_better:
+        - throughput
+        - accuracy_preservation
+    reviewer_guardrails:
+      - Separate algorithmic approximation error from hardware speedup.
+      - Keep model, batch size, precision, and dataset fixed across devices.
+
+  memory-hierarchy-pim:
+    title: Memory hierarchy, DRAM, PIM, GEMV, SpMV, and address mapping
+    status: planned
+    environments:
+      - linux-cpu-opencl
+      - linux-cuda-nvidia
+    workloads:
+      - GEMV
+      - SpMV
+      - sparse-dense matrix multiplication
+      - address-mapping sweep
+      - row activation counting trace
+    metrics:
+      lower_is_better:
+        - row_buffer_miss_rate
+        - activation_count
+        - memory_stall_time
+        - energy_j
+      higher_is_better:
+        - effective_bandwidth
+        - ops_per_joule
+    reviewer_guardrails:
+      - Tie every mapping claim to a visible address mapping or trace.
+      - Do not infer DRAM row-buffer behavior from wall time alone.
+
+  multi-tenant-migration-storage:
+    title: Multi-tenant inference, tensor migration, unified storage, and oversubscription
+    status: planned
+    environments:
+      - linux-cuda-nvidia
+    workloads:
+      - concurrent inference kernels
+      - managed-memory tensor migration
+      - storage-backed oversubscription
+    metrics:
+      lower_is_better:
+        - p95_latency
+        - migration_bytes
+        - eviction_count
+        - storage_io_wait
+      higher_is_better:
+        - fairness
+        - throughput
+    reviewer_guardrails:
+      - Report tail latency and fairness, not only throughput.
+      - Separate GPU memory oversubscription from SSD/page-cache effects.
+
+  cluster-communication:
+    title: NCCL/PXN rail-optimized cluster communication
+    status: planned
+    environments:
+      - cluster-nccl
+    workloads:
+      - all-reduce
+      - all-gather
+      - reduce-scatter
+    metrics:
+      lower_is_better:
+        - latency
+      higher_is_better:
+        - bus_bandwidth
+        - algorithm_bandwidth
+    reviewer_guardrails:
+      - Capture topology, rail binding, NCCL environment variables, and message-size sweep.
+      - Do not generalize single-node results to large-scale clusters.
+
+  security-counter-cache:
+    title: Defensive cache/counter side-channel characterization
+    status: planned
+    environments:
+      - linux-cpu-opencl
+    workloads:
+      - performance-counter perturbation detection
+      - cache-state rollback characterization
+    metrics:
+      lower_is_better:
+        - false_positive_rate
+        - false_negative_rate
+        - detection_latency
+      higher_is_better:
+        - detection_coverage
+    reviewer_guardrails:
+      - Keep this track defensive and measurement-focused.
+      - Do not publish exploit automation or credential-relevant attack steps.

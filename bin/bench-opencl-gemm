@@ -10,6 +10,11 @@ OUT="$BUILD_DIR/opencl-gemm-${SIZE}-$(date +%Y%m%d-%H%M%S).txt"
 
 mkdir -p "$BUILD_DIR"
 
-gcc -O2 "$SRC" -lOpenCL -lm -o "$BIN"
+if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
+  gcc -O2 "$SRC" -lOpenCL -lm -o "$BIN"
+  printf 'Build: compiled %s\n' "$BIN"
+else
+  printf 'Build: reused %s\n' "$BIN"
+fi
 "$BIN" "$SIZE" | tee "$OUT"
 printf '\nSaved: %s\n' "$OUT"

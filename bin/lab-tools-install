@@ -44,7 +44,7 @@ run() {
   fi
 }
 
-mkdir -p "$HOME/bin" "$HOME/.config/lab/suites" "$HOME/.config/lab/containers" "$HOME/.config/lab/templates" "$HOME/notes"
+mkdir -p "$HOME/bin" "$HOME/.config/lab/suites" "$HOME/.config/lab/containers" "$HOME/.config/lab/templates" "$HOME/.config/lab/pipelines" "$HOME/notes"
 
 installed_bin=0
 for src in "$REPO_DIR/bin/"*; do
@@ -56,13 +56,13 @@ for src in "$REPO_DIR/bin/"*; do
 done
 
 installed_cfg=0
-for src in "$REPO_DIR/config/"*.c; do
+for src in "$REPO_DIR/config/"*.c "$REPO_DIR/config/"*.cu; do
   [ -f "$src" ] || continue
   run install -Dm644 "$src" "$HOME/.config/lab/$(basename "$src")"
   installed_cfg=$((installed_cfg + 1))
 done
 
-for sub in suites containers templates; do
+for sub in suites containers templates pipelines; do
   if [ -d "$REPO_DIR/config/$sub" ]; then
     for src in "$REPO_DIR/config/$sub/"*; do
       [ -f "$src" ] || continue

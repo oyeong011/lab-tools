@@ -41,6 +41,7 @@ printf 'profile=%s\n\n' "$PROFILE"
 printf '== Framework commands (all profiles) ==\n'
 for cmd in \
   lab-safe-run lab-pin-system lab-profile lab-tools-install lab-tools-sync \
+  lab-pipeline lab-validate \
   lab-doctor lab-manifest lab-handoff lab-index lab-archive lab-backup lab-plot lab-clean \
   bench-suite bench-suite-config summarize-suite suite-stats suite-compare \
   render-suite-report render-suite-html render-method-section render-repro-checklist \
@@ -66,16 +67,28 @@ else
   printf 'warn python  matplotlib missing\n'
   warn=$((warn + 1))
 fi
+if python3 -c 'import yaml' >/dev/null 2>&1; then
+  printf 'ok   python  yaml\n'
+else
+  printf 'warn python  yaml missing (needed for *.yaml suite configs and lab-pipeline)\n'
+  warn=$((warn + 1))
+fi
+if python3 -c 'import scipy' >/dev/null 2>&1; then
+  printf 'ok   python  scipy\n'
+else
+  printf 'warn python  scipy missing (suite-compare will mark p-values scipy_unavailable)\n'
+  warn=$((warn + 1))
+fi
 
 printf '\n== CUDA toolchain ==\n'
 case "$PROFILE" in
   cuda)
-    for cmd in nvidia-smi nvcc nvml-check bench-cuda-vector-add bench-cuda-gemm; do
+    for cmd in nvidia-smi nvcc nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access; do
       check_cmd "$cmd"
     done
     ;;
   *)
-    for cmd in nvidia-smi nvcc nvml-check bench-cuda-vector-add bench-cuda-gemm; do
+    for cmd in nvidia-smi nvcc nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access; do
       info_cmd "$cmd"
     done
     printf 'note     profile=cpu — CUDA tools optional on this host\n'
@@ -95,6 +108,7 @@ if [ "$PROFILE" = cuda ]; then
   printf '\n== Required files (CUDA profile) ==\n'
   check_file "$HOME/.config/lab/cuda-vector-add.cu"
   check_file "$HOME/.config/lab/cuda-gemm.cu"
+  check_file "$HOME/.config/lab/cuda-uvm-access.cu"
   check_file "$HOME/.config/lab/containers/Containerfile.cuda"
 fi
 

@@ -86,7 +86,11 @@ def status_for(check, suite, manifest, summary_meta):
     if name == "Pairwise comparison artifact (if applicable)":
         return any(suite.glob("compare-vs-*.csv"))
     if name == "Independent reproducibility package":
-        return any((suite.parent.parent / "_archives").glob(f"*{suite.name}*.tar.zst")) if (suite.parent.parent / "_archives").exists() else False
+        roots = [suite.parent.parent / "_archives", suite.parent.parent / "_handoffs", Path.home() / "lab" / "_handoffs"]
+        for root in roots:
+            if root.exists() and any(root.glob(f"*{suite.name}*.tar.*")):
+                return True
+        return False
     return False
 
 

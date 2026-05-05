@@ -14,6 +14,11 @@ if ! command -v nvcc >/dev/null 2>&1; then
 fi
 
 mkdir -p "$BUILD_DIR"
-nvcc -O2 "$SRC" -lcublas -o "$BIN"
+if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
+  nvcc -O2 "$SRC" -lcublas -o "$BIN"
+  printf 'Build: compiled %s\n' "$BIN"
+else
+  printf 'Build: reused %s\n' "$BIN"
+fi
 "$BIN" "$SIZE" | tee "$OUT"
 printf '\nSaved: %s\n' "$OUT"
