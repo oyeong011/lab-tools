@@ -76,8 +76,9 @@ iGPU, Ubuntu RTX 5060 8GB, and Ubuntu RTX 5080 16GB. Bundles are plain
 `.tar.gz` files with `.sha256` sidecars, so they can be moved by `scp`, USB, or
 Google Drive as long as the sidecar is kept with the bundle.
 `lab-acceptance-stage` copies the latest passing bundle per matrix target,
-writes `STAGE-MANIFEST.json`, and leaves a folder that can be uploaded to
-Google Drive or copied to USB without dragging along stale bundles.
+the acceptance config used for verification, and `STAGE-MANIFEST.json`. The
+resulting folder can be uploaded to Google Drive or copied to USB without
+dragging along stale bundles or relying on this Mac's local config path.
 `lab-remote-acceptance` also installs PyYAML in the remote user's Python
 environment when needed, because YAML parsing is required before acceptance can
 run.

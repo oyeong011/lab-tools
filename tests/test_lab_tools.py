@@ -446,15 +446,36 @@ class LabToolsSmokeTests(unittest.TestCase):
             self.assertIn("stage_dir=", out)
             self.assertTrue((stage_dir / apple_bundle.name).exists())
             self.assertTrue((stage_dir / f"{apple_bundle.name}.sha256").exists())
+            self.assertTrue((stage_dir / matrix_config.name).exists())
             stage_manifest = json.loads((stage_dir / "STAGE-MANIFEST.json").read_text())
             self.assertEqual(stage_manifest["mode"], "latest-passing-per-target")
             self.assertFalse(stage_manifest["complete"])
             self.assertIn("apple-m4", stage_manifest["missing_targets"])
+            self.assertEqual(stage_manifest["staged_config"]["path"], matrix_config.name)
             stage_readme = (stage_dir / "README.md").read_text()
-            self.assertIn("lab-acceptance-matrix --bundle-dir .", stage_readme)
+            self.assertIn(f"lab-acceptance-matrix --config {matrix_config.name} --bundle-dir .", stage_readme)
+            self.assertIn("- Complete: `no`", stage_readme)
             self.assertNotIn(f"lab-acceptance-matrix --bundle-dir {stage_dir}", stage_readme)
             env = os.environ.copy()
             env["PATH"] = f"{BIN}:{env.get('PATH', '')}"
+            staged_result = subprocess.run(
+                [
+                    "lab-acceptance-matrix",
+                    "--config",
+                    matrix_config.name,
+                    "--bundle-dir",
+                    ".",
+                    "--target",
+                    "apple-m1",
+                ],
+                cwd=stage_dir,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+            self.assertIn("complete=yes", staged_result.stdout)
             result = subprocess.run(
                 [
                     "bin/lab-acceptance-matrix",

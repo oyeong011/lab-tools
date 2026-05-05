@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -90,19 +91,36 @@ def copy_bundle(bundle, out_dir):
     return copied
 
 
+def copy_stage_config(config, out_dir):
+    src = Path(config)
+    dst = out_dir / src.name
+    copied = src.resolve() != dst.resolve()
+    if copied:
+        shutil.copy2(src, dst)
+    return {
+        "source": str(src),
+        "path": dst.name,
+        "bytes": dst.stat().st_size,
+        "sha256": sha256_file(dst),
+        "copied": copied,
+    }
+
+
 def write_readme(out_dir, manifest):
     missing = manifest.get("missing_targets") or []
+    staged_config = (manifest.get("staged_config") or {}).get("path") or "required-hosts.json"
+    complete = "yes" if manifest.get("complete") else "no"
     (out_dir / "README.md").write_text(
         "# Lab Acceptance Bundle Stage\n\n"
         "Copy this entire directory to Google Drive, USB storage, or a shared\n"
         "folder. Keep each `.tar.gz` file together with its `.tar.gz.sha256`\n"
-        "sidecar.\n\n"
+        "sidecar and the staged acceptance config.\n\n"
         "Validate after copying:\n\n"
         "```bash\n"
         "cd <copied-stage-directory>\n"
-        "lab-acceptance-matrix --bundle-dir .\n"
+        f"lab-acceptance-matrix --config {shlex.quote(staged_config)} --bundle-dir .\n"
         "```\n\n"
-        f"- Complete: `{manifest.get('complete')}`\n"
+        f"- Complete: `{complete}`\n"
         f"- Missing targets: `{', '.join(missing) if missing else 'none'}`\n"
         f"- Generated at: `{manifest.get('generated_at')}`\n",
         encoding="utf-8",
@@ -136,6 +154,7 @@ def main():
         else:
             bundles, missing = selected_from_matrix(matrix)
         out_dir.mkdir(parents=True, exist_ok=True)
+        staged_config = copy_stage_config(config, out_dir)
         copied = []
         for bundle in bundles:
             copied.extend(copy_bundle(bundle, out_dir))
@@ -145,6 +164,7 @@ def main():
             "source_dirs": [str(Path(p).expanduser()) for p in source_dirs],
             "out_dir": str(out_dir),
             "config": str(config),
+            "staged_config": staged_config,
             "mode": "all" if args.all else "latest-passing-per-target",
             "complete": bool(matrix.get("complete")),
             "missing_targets": missing,
