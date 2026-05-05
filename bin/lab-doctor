@@ -42,7 +42,7 @@ printf 'profile=%s\n\n' "$PROFILE"
 printf '== Framework commands (all profiles) ==\n'
 for cmd in \
   lab-safe-run lab-pin-system lab-profile lab-tools-install lab-tools-sync \
-  lab-acceptance-verify lab-apple-smoke lab-pipeline lab-rtx-smoke lab-uvm-profile lab-validate \
+  lab-acceptance-bundle lab-acceptance-verify lab-apple-smoke lab-pipeline lab-rtx-smoke lab-uvm-profile lab-validate \
   lab-doctor lab-host-acceptance lab-manifest lab-handoff lab-index lab-archive lab-backup lab-plot lab-clean \
   bench-suite bench-suite-config summarize-suite suite-stats suite-compare \
   render-suite-report render-suite-html render-method-section render-repro-checklist \

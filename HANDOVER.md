@@ -79,6 +79,7 @@ lab-uvm-profile --pattern hchi --mb 12288 --passes 2
 bench-suite-config memory-kernels
 lab-host-acceptance --run --uvm-profile
 lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
+lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
 ```
 
 MacBook M1/M4 smoke:
@@ -89,6 +90,7 @@ LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
 LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run --run-mps  # optional PyTorch MPS path
 lab-host-acceptance --run
 lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile apple --require-run
+lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile apple --require-run
 ```
 
 ## 2. 캠페인 산출물

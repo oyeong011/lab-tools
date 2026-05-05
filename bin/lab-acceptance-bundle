@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Package a lab-host-acceptance artifact for transfer to another machine."""
+import argparse
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+from datetime import datetime
+from pathlib import Path
+
+
+def fail(message):
+    print(f"error: {message}", file=sys.stderr)
+    return 1
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def resolve_artifact(path):
+    artifact = Path(path).expanduser().resolve()
+    if artifact.is_file() and artifact.name == "acceptance.json":
+        artifact = artifact.parent
+    json_path = artifact / "acceptance.json"
+    if not json_path.exists():
+        raise FileNotFoundError(f"acceptance.json not found: {json_path}")
+    return artifact, json_path
+
+
+def verifier_path():
+    local = Path(__file__).resolve().parent / "lab-acceptance-verify"
+    if local.exists():
+        return str(local)
+    found = shutil.which("lab-acceptance-verify")
+    if found:
+        return found
+    raise FileNotFoundError("lab-acceptance-verify not found in checkout or PATH")
+
+
+def run_verifier(args, artifact):
+    cmd = [verifier_path(), str(artifact)]
+    if args.expect_profile:
+        cmd.extend(["--expect-profile", args.expect_profile])
+    if args.require_run:
+        cmd.append("--require-run")
+    if args.require_uvm_profile:
+        cmd.append("--require-uvm-profile")
+    subprocess.run(cmd, check=True)
+    return cmd
+
+
+def output_path(out_arg, bundle_base):
+    if out_arg:
+        out = Path(out_arg).expanduser()
+        if out.name.endswith(".tar.gz") or out.name.endswith(".tgz"):
+            return out
+        return out / f"{bundle_base}.tar.gz"
+    return Path.home() / "lab" / "_acceptance_bundles" / f"{bundle_base}.tar.gz"
+
+
+def file_records(root):
+    records = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.name == "bundle-manifest.json":
+            continue
+        rel = path.relative_to(root).as_posix()
+        records.append({"path": rel, "bytes": path.stat().st_size, "sha256": sha256_file(path)})
+    return records
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("artifact", help="Acceptance directory or acceptance.json")
+    parser.add_argument("--out", help="Output .tar.gz path or output directory")
+    parser.add_argument("--expect-profile", choices=["cpu", "cuda", "apple", "cluster"])
+    parser.add_argument("--require-run", action="store_true")
+    parser.add_argument("--require-uvm-profile", action="store_true")
+    parser.add_argument("--no-verify", action="store_true", help="Package without running lab-acceptance-verify first")
+    args = parser.parse_args()
+
+    try:
+        artifact, json_path = resolve_artifact(args.artifact)
+        data = json.loads(json_path.read_text())
+        verify_cmd = [] if args.no_verify else run_verifier(args, artifact)
+    except Exception as exc:
+        return fail(str(exc))
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    bundle_base = f"{artifact.name}-acceptance-bundle-{stamp}"
+    out = output_path(args.out, bundle_base).resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="lab-acceptance-bundle-") as td:
+        staging_root = Path(td) / bundle_base
+        acceptance_dir = staging_root / "acceptance" / artifact.name
+        shutil.copytree(artifact, acceptance_dir)
+
+        verify_tail = []
+        if args.expect_profile:
+            verify_tail.extend(["--expect-profile", args.expect_profile])
+        if args.require_run:
+            verify_tail.append("--require-run")
+        if args.require_uvm_profile:
+            verify_tail.append("--require-uvm-profile")
+        verify_command = "lab-acceptance-verify acceptance/{} {}".format(
+            artifact.name,
+            " ".join(verify_tail),
+        ).strip()
+
+        (staging_root / "README.md").write_text(
+            "# Lab Acceptance Bundle\n\n"
+            f"- Source artifact: `{artifact.name}`\n"
+            f"- Profile: `{data.get('profile', 'unknown')}`\n"
+            f"- Status: `{data.get('status', 'unknown')}`\n\n"
+            "After extracting on another machine, install lab-tools and run:\n\n"
+            "```bash\n"
+            f"{verify_command}\n"
+            "```\n",
+            encoding="utf-8",
+        )
+
+        records = file_records(staging_root)
+        (staging_root / "SHA256SUMS").write_text(
+            "".join(f"{item['sha256']}  {item['path']}\n" for item in records),
+            encoding="utf-8",
+        )
+        manifest = {
+            "schema_version": 1,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "artifact_name": artifact.name,
+            "source_artifact": str(artifact),
+            "profile": data.get("profile"),
+            "status": data.get("status"),
+            "steps": len(data.get("steps") or []),
+            "verified": not args.no_verify,
+            "verify_command": verify_cmd,
+            "files": records,
+        }
+        (staging_root / "bundle-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        with tarfile.open(out, "w:gz") as tar:
+            tar.add(staging_root, arcname=bundle_base)
+
+    digest = sha256_file(out)
+    sha_path = Path(str(out) + ".sha256")
+    sha_path.write_text(f"{digest}  {out.name}\n", encoding="utf-8")
+    print(f"bundle={out}")
+    print(f"sha256={sha_path}")
+    print(f"verify={verify_command}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

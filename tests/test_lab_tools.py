@@ -3,6 +3,7 @@ import json
 import os
 import py_compile
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -119,6 +120,36 @@ class LabToolsSmokeTests(unittest.TestCase):
             out = self.run_cmd([
                 "bin/lab-acceptance-verify",
                 str(artifact),
+                "--expect-profile",
+                "cuda",
+                "--require-run",
+                "--require-uvm-profile",
+            ]).stdout
+            self.assertIn("ok acceptance", out)
+            bundle_dir = artifact.parent / f"{artifact.name}-bundles"
+            out = self.run_cmd([
+                "bin/lab-acceptance-bundle",
+                str(artifact),
+                "--out",
+                str(bundle_dir),
+                "--expect-profile",
+                "cuda",
+                "--require-run",
+                "--require-uvm-profile",
+            ]).stdout
+            bundle_line = next(line for line in out.splitlines() if line.startswith("bundle="))
+            bundle_path = Path(bundle_line.split("=", 1)[1])
+            self.assertTrue(bundle_path.exists())
+            self.assertTrue(Path(str(bundle_path) + ".sha256").exists())
+            extract_dir = artifact / "extract"
+            extract_dir.mkdir()
+            with tarfile.open(bundle_path, "r:gz") as tar:
+                tar.extractall(extract_dir)
+            extracted_artifacts = list(extract_dir.glob("*/acceptance/*"))
+            self.assertEqual(len(extracted_artifacts), 1)
+            out = self.run_cmd([
+                "bin/lab-acceptance-verify",
+                str(extracted_artifacts[0]),
                 "--expect-profile",
                 "cuda",
                 "--require-run",
