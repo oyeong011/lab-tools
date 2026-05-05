@@ -66,6 +66,7 @@ lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require
 lab-remote-acceptance user@intel-host --profile cpu --run --require-provenance --require-opencl-device Intel
 lab-acceptance-collect --profile apple --run --require-provenance --require-apple-chip "Apple M1"
 lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles
+lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles --next-commands
 lab-acceptance-stage --out ~/lab/_drive_stage/lab-acceptance-bundles
 ```
 

@@ -96,6 +96,47 @@ def target_command(tool, bundle, target):
     return cmd
 
 
+def collect_command(target):
+    cmd = ["lab-acceptance-collect", "--profile", target["profile"]]
+    if target.get("require_run"):
+        cmd.append("--run")
+    if target.get("require_uvm_profile"):
+        cmd.append("--uvm-profile")
+    if target.get("require_provenance"):
+        cmd.append("--require-provenance")
+    for value in target.get("require_gpu_name") or []:
+        cmd.extend(["--require-gpu-name", str(value)])
+    if target.get("min_gpu_memory_mib") is not None:
+        cmd.extend(["--min-gpu-memory-mib", str(target["min_gpu_memory_mib"])])
+    for value in target.get("require_compute_cap") or []:
+        cmd.extend(["--require-compute-cap", str(value)])
+    for value in target.get("require_cuda_sm") or []:
+        cmd.extend(["--require-cuda-sm", str(value)])
+    for value in target.get("require_opencl_device") or []:
+        cmd.extend(["--require-opencl-device", str(value)])
+    for value in target.get("require_apple_chip") or []:
+        cmd.extend(["--require-apple-chip", str(value)])
+    return cmd
+
+
+def remote_placeholder(target):
+    name = target["name"]
+    if target["profile"] == "cuda":
+        gpu = (target.get("require_gpu_name") or ["gpu"])[0].lower().replace(" ", "")
+        return f"user@{gpu}-host"
+    if target["profile"] == "apple":
+        chip = (target.get("require_apple_chip") or ["apple"])[0].lower().replace(" ", "")
+        return f"user@{chip}-mac"
+    return f"user@{name.replace('_', '-').replace('ubuntu-', '')}-host"
+
+
+def remote_command(target):
+    cmd = ["lab-remote-acceptance", remote_placeholder(target)]
+    for word in collect_command(target)[1:]:
+        cmd.append(word)
+    return cmd
+
+
 def shell_join(words):
     return " ".join(shlex_quote(str(word)) for word in words)
 
@@ -157,6 +198,20 @@ def print_table(results):
         print(f"{item['name']:<{widths['target']}}  {item['profile']:<{widths['profile']}}  {item['status']:<{widths['status']}}  {item.get('bundle', '')}")
 
 
+def print_next_commands(results, targets_by_name):
+    missing = [item for item in results if item.get("status") != "ok"]
+    if not missing:
+        print("\nnext_commands=none")
+        return
+    print("\nNext commands for missing targets:")
+    for item in missing:
+        target = targets_by_name[item["name"]]
+        print(f"\n# {item['name']} direct on target host")
+        print(shell_join(collect_command(target)))
+        print(f"# {item['name']} over SSH from this host")
+        print(shell_join(remote_command(target)))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=str(default_config_path()), help="Required host matrix JSON")
@@ -170,6 +225,7 @@ def main():
     parser.add_argument("--target", action="append", default=[], help="Only check one target name; may be repeated")
     parser.add_argument("--recursive", action="store_true", help="Recursively search bundle directories")
     parser.add_argument("--dry-run", action="store_true", help="Print planned verification commands without running them")
+    parser.add_argument("--next-commands", action="store_true", help="Print collection commands for missing targets")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     parser.add_argument("--verbose", action="store_true", help="Include verifier output for failed candidates")
     args = parser.parse_args()
@@ -216,6 +272,16 @@ def main():
         "complete": complete,
         "results": results,
     }
+    if args.next_commands:
+        targets_by_name = {target["name"]: target for target in targets}
+        output["next_commands"] = {
+            item["name"]: {
+                "direct": collect_command(targets_by_name[item["name"]]),
+                "remote": remote_command(targets_by_name[item["name"]]),
+            }
+            for item in results
+            if item.get("status") != "ok"
+        }
     if args.json:
         print(json.dumps(output, indent=2))
     else:
@@ -223,6 +289,8 @@ def main():
         print(f"\ncomplete={'yes' if complete else 'no'}")
         if not complete:
             print("missing_targets=" + ",".join(item["name"] for item in results if item["status"] != "ok"))
+        if args.next_commands:
+            print_next_commands(results, {target["name"]: target for target in targets})
     return 0 if complete else 1
 
 

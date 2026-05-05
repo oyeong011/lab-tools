@@ -161,6 +161,28 @@ class LabToolsSmokeTests(unittest.TestCase):
             "ubuntu-rtx5060-8gb",
         ]).stdout
         self.assertIn("DRY ubuntu-rtx5060-8gb: lab-acceptance-bundle --check-bundle '<bundle.tar.gz>' --expect-profile cuda --require-run --require-uvm-profile --require-provenance --require-gpu-name 'RTX 5060' --min-gpu-memory-mib 7600 --require-compute-cap 12.0 --require-cuda-sm 120", out)
+        env = os.environ.copy()
+        env["PATH"] = f"{BIN}:{env.get('PATH', '')}"
+        result = subprocess.run(
+            [
+                "bin/lab-acceptance-matrix",
+                "--bundle-dir",
+                "/tmp/empty-lab-bundle-dir",
+                "--target",
+                "ubuntu-rtx5080-16gb",
+                "--next-commands",
+            ],
+            cwd=REPO,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        out = result.stdout
+        self.assertIn("Next commands for missing targets", out)
+        self.assertIn("lab-acceptance-collect --profile cuda --run --uvm-profile --require-provenance --require-gpu-name 'RTX 5080' --min-gpu-memory-mib 15000 --require-compute-cap 12.0 --require-cuda-sm 120", out)
+        self.assertIn("lab-remote-acceptance user@rtx5080-host --profile cuda --run --uvm-profile --require-provenance --require-gpu-name 'RTX 5080' --min-gpu-memory-mib 15000 --require-compute-cap 12.0 --require-cuda-sm 120", out)
         out = self.run_cmd(["bash", "-c", "LAB_CUDA_ARCH=sm_120 bin/lab-cuda-arch-flags --verbose"]).stdout
         self.assertIn("cuda_compute_cap=12.0", out)
         self.assertIn("cuda_sm=120", out)
