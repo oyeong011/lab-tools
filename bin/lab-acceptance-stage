@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Stage acceptance bundles for Google Drive, USB, or another shared folder."""
+import argparse
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+
+def fail(message):
+    print(f"error: {message}", file=sys.stderr)
+    return 1
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def tool_path(name):
+    local = Path(__file__).resolve().parent / name
+    if local.exists():
+        return str(local)
+    found = shutil.which(name)
+    if found:
+        return found
+    raise FileNotFoundError(f"{name} not found in checkout or PATH")
+
+
+def discover_all(source_dirs, recursive):
+    bundles = []
+    for value in source_dirs:
+        root = Path(value).expanduser()
+        if not root.is_dir():
+            continue
+        for pattern in ("*.tar.gz", "*.tgz"):
+            found = root.rglob(pattern) if recursive else root.glob(pattern)
+            bundles.extend(path.resolve() for path in found if path.is_file())
+    return sorted(set(bundles), key=lambda p: (p.stat().st_mtime, str(p)), reverse=True)
+
+
+def matrix_json(config, source_dirs, recursive):
+    cmd = [tool_path("lab-acceptance-matrix"), "--json", "--config", str(config)]
+    for source_dir in source_dirs:
+        cmd.extend(["--bundle-dir", str(source_dir)])
+    if recursive:
+        cmd.append("--recursive")
+    result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"lab-acceptance-matrix did not return JSON: {result.stdout}") from exc
+    data["matrix_returncode"] = result.returncode
+    return data
+
+
+def selected_from_matrix(matrix):
+    selected = []
+    missing = []
+    for item in matrix.get("results") or []:
+        bundle = item.get("bundle")
+        if item.get("status") == "ok" and bundle:
+            selected.append(Path(bundle))
+        else:
+            missing.append(item.get("name", "unknown"))
+    return sorted(set(selected), key=lambda p: str(p)), missing
+
+
+def copy_bundle(bundle, out_dir):
+    copied = []
+    for src in [bundle, Path(str(bundle) + ".sha256")]:
+        if not src.exists():
+            copied.append({"source": str(src), "copied": False, "warning": "missing"})
+            continue
+        dst = out_dir / src.name
+        shutil.copy2(src, dst)
+        copied.append({
+            "source": str(src),
+            "path": dst.name,
+            "bytes": dst.stat().st_size,
+            "sha256": sha256_file(dst),
+            "copied": True,
+        })
+    return copied
+
+
+def write_readme(out_dir, manifest):
+    missing = manifest.get("missing_targets") or []
+    (out_dir / "README.md").write_text(
+        "# Lab Acceptance Bundle Stage\n\n"
+        "Copy this entire directory to Google Drive, USB storage, or a shared\n"
+        "folder. Keep each `.tar.gz` file together with its `.tar.gz.sha256`\n"
+        "sidecar.\n\n"
+        "Validate after copying:\n\n"
+        "```bash\n"
+        f"lab-acceptance-matrix --bundle-dir {out_dir}\n"
+        "```\n\n"
+        f"- Complete: `{manifest.get('complete')}`\n"
+        f"- Missing targets: `{', '.join(missing) if missing else 'none'}`\n"
+        f"- Generated at: `{manifest.get('generated_at')}`\n",
+        encoding="utf-8",
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source-dir",
+        action="append",
+        default=[],
+        help="Directory containing acceptance bundles; may be repeated",
+    )
+    parser.add_argument("--out", default=str(Path.home() / "lab" / "_drive_stage" / "lab-acceptance-bundles"))
+    parser.add_argument("--config", default=str(Path(__file__).resolve().parent.parent / "config" / "acceptance" / "required-hosts.json"))
+    parser.add_argument("--recursive", action="store_true")
+    parser.add_argument("--all", action="store_true", help="Stage all bundles instead of latest passing bundle per target")
+    parser.add_argument("--strict", action="store_true", help="Exit nonzero unless every matrix target is present")
+    args = parser.parse_args()
+
+    source_dirs = args.source_dir or [Path.home() / "lab" / "_acceptance_bundles"]
+    out_dir = Path(args.out).expanduser().resolve()
+    config = Path(args.config).expanduser().resolve()
+
+    try:
+        matrix = matrix_json(config, source_dirs, args.recursive)
+        if args.all:
+            bundles = discover_all(source_dirs, args.recursive)
+            missing = [item.get("name", "unknown") for item in matrix.get("results") or [] if item.get("status") != "ok"]
+        else:
+            bundles, missing = selected_from_matrix(matrix)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        copied = []
+        for bundle in bundles:
+            copied.extend(copy_bundle(bundle, out_dir))
+        manifest = {
+            "schema_version": 1,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "source_dirs": [str(Path(p).expanduser()) for p in source_dirs],
+            "out_dir": str(out_dir),
+            "config": str(config),
+            "mode": "all" if args.all else "latest-passing-per-target",
+            "complete": bool(matrix.get("complete")),
+            "missing_targets": missing,
+            "matrix": matrix,
+            "copied": copied,
+        }
+        (out_dir / "STAGE-MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        write_readme(out_dir, manifest)
+    except Exception as exc:
+        return fail(str(exc))
+
+    copied_count = sum(1 for item in copied if item.get("copied"))
+    print(f"stage_dir={out_dir}")
+    print(f"copied_files={copied_count}")
+    print(f"complete={'yes' if matrix.get('complete') else 'no'}")
+    if missing:
+        print("missing_targets=" + ",".join(missing))
+    if args.strict and not matrix.get("complete"):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

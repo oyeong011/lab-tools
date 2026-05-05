@@ -41,6 +41,7 @@ covering:
 | Transfer bundle | `bin/lab-acceptance-bundle` | Creates `.tar.gz` plus `.sha256`; `--check-bundle` verifies sidecar, internal hashes, and acceptance | Done |
 | One-command host collection | `bin/lab-acceptance-collect` | Apple actual run passed; CUDA dry-run shows required commands | Done |
 | Whole matrix bundle audit | `bin/lab-acceptance-matrix`, `config/acceptance/required-hosts.json` | Fresh clone dry-run and unit test cover target mapping; real completion still requires missing bundles | Ready |
+| Drive/USB bundle staging | `bin/lab-acceptance-stage` | Copies latest passing bundle per matrix target plus `.sha256`, writes `STAGE-MANIFEST.json`, and supports strict full-matrix gating | Ready |
 | SSH automation | `bin/lab-remote-acceptance` | Fresh clone remote dry-run passes; actual run requires SSH target | Ready |
 | Suite handoff | `bin/lab-handoff` | Includes acceptance tools; uses Python SHA256; test opens produced tarball | Done |
 | GitHub push | `origin/main` | Local `HEAD` equals `origin/main` at `a32980f4b6f9625a037d6426a7687f5567a302c2` | Done |
@@ -63,8 +64,9 @@ covering:
 - No Google Drive desktop sync folder was found under
   `~/Library/CloudStorage` or `/Volumes` on this Mac during the latest check.
   The current local acceptance bundle directory is small; when RTX Nsight
-  bundles become large, move each `.tar.gz` together with its `.sha256` sidecar
-  to Drive and run `lab-acceptance-matrix --bundle-dir <Drive folder>`.
+  bundles become large, use `lab-acceptance-stage --out <Drive folder>` or move
+  each `.tar.gz` together with its `.sha256` sidecar to Drive and run
+  `lab-acceptance-matrix --bundle-dir <Drive folder>`.
 
 ## Required RTX Completion Command
 

@@ -66,6 +66,7 @@ lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require
 lab-remote-acceptance user@intel-host --profile cpu --run --require-provenance --require-opencl-device Intel
 lab-acceptance-collect --profile apple --run --require-provenance --require-apple-chip "Apple M1"
 lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles
+lab-acceptance-stage --out ~/lab/_drive_stage/lab-acceptance-bundles
 ```
 
 `lab-acceptance-matrix` checks all collected bundles against
@@ -73,6 +74,9 @@ lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles
 iGPU, Ubuntu RTX 5060 8GB, and Ubuntu RTX 5080 16GB. Bundles are plain
 `.tar.gz` files with `.sha256` sidecars, so they can be moved by `scp`, USB, or
 Google Drive as long as the sidecar is kept with the bundle.
+`lab-acceptance-stage` copies the latest passing bundle per matrix target,
+writes `STAGE-MANIFEST.json`, and leaves a folder that can be uploaded to
+Google Drive or copied to USB without dragging along stale bundles.
 
 RTX host smoke and UVM mechanism profiling:
 

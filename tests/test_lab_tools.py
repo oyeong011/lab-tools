@@ -411,6 +411,23 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "apple-m1",
             ]).stdout
             self.assertIn("complete=yes", out)
+            stage_dir = artifact / "drive-stage"
+            out = self.run_cmd([
+                "bin/lab-acceptance-stage",
+                "--config",
+                str(matrix_config),
+                "--source-dir",
+                str(apple_bundle_dir),
+                "--out",
+                str(stage_dir),
+            ]).stdout
+            self.assertIn("stage_dir=", out)
+            self.assertTrue((stage_dir / apple_bundle.name).exists())
+            self.assertTrue((stage_dir / f"{apple_bundle.name}.sha256").exists())
+            stage_manifest = json.loads((stage_dir / "STAGE-MANIFEST.json").read_text())
+            self.assertEqual(stage_manifest["mode"], "latest-passing-per-target")
+            self.assertFalse(stage_manifest["complete"])
+            self.assertIn("apple-m4", stage_manifest["missing_targets"])
             env = os.environ.copy()
             env["PATH"] = f"{BIN}:{env.get('PATH', '')}"
             result = subprocess.run(
@@ -500,6 +517,7 @@ class LabToolsSmokeTests(unittest.TestCase):
         self.assertIn("lab-acceptance-bundle", handoff)
         self.assertIn("lab-acceptance-collect", handoff)
         self.assertIn("lab-acceptance-matrix", handoff)
+        self.assertIn("lab-acceptance-stage", handoff)
         self.assertIn("lab-remote-acceptance", handoff)
         self.assertIn("*.tar.gz|*.tgz", handoff)
         self.assertIn("export PATH=", handoff)
@@ -596,6 +614,7 @@ class LabToolsSmokeTests(unittest.TestCase):
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-bundle") for name in names))
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-collect") for name in names))
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-matrix") for name in names))
+            self.assertTrue(any(name.endswith("/bin/lab-acceptance-stage") for name in names))
             self.assertTrue(any(name.endswith("/bin/lab-remote-acceptance") for name in names))
             self.assertTrue(any(name.endswith("/config/lab/acceptance/required-hosts.json") for name in names))
             with (suite / "summary.csv").open(newline="") as f:
