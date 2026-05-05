@@ -450,6 +450,9 @@ class LabToolsSmokeTests(unittest.TestCase):
             self.assertEqual(stage_manifest["mode"], "latest-passing-per-target")
             self.assertFalse(stage_manifest["complete"])
             self.assertIn("apple-m4", stage_manifest["missing_targets"])
+            stage_readme = (stage_dir / "README.md").read_text()
+            self.assertIn("lab-acceptance-matrix --bundle-dir .", stage_readme)
+            self.assertNotIn(f"lab-acceptance-matrix --bundle-dir {stage_dir}", stage_readme)
             env = os.environ.copy()
             env["PATH"] = f"{BIN}:{env.get('PATH', '')}"
             result = subprocess.run(
