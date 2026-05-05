@@ -4,12 +4,14 @@
 
 ## 0. 한 문단 요약
 
-`lab-tools`는 두 호스트로 운영되는 재현성 지향 벤치마킹 프레임워크입니다.
+`lab-tools`는 여러 호스트에서 같은 acceptance 기준을 공유하는 재현성 지향 벤치마킹 프레임워크입니다.
 
 - **호스트 A (cpu 프로파일):** Intel i7-7700 + HD 630. NVIDIA GPU 없음. 측정 방법론·재현성 개발 환경.
 - **호스트 B (cuda 프로파일):** Intel Core Ultra 5 235 + RTX 5060 8GB(Blackwell sm_120) + CUDA 13.1. CUDA 실행 환경.
+- **호스트 C (cuda 프로파일):** RTX 5080 16GB. 큰 UVM sweep과 CUDA 메모리 커널 실행 환경.
+- **호스트 D/E (apple 프로파일):** MacBook M1/M4. Metal/MPS smoke 및 휴대용 설치 검증 환경.
 
-같은 코드, 같은 통계, 같은 리포트 형식을 양쪽에서 쓰되 `lab-profile`이 호스트 능력을 자동 감지해서 워크로드만 자동으로 갈라집니다. summary.csv 스키마는 두 프로파일에 통합되어 있어 `suite-compare`가 호스트 간 직접 비교를 별도 변환 없이 처리합니다.
+같은 코드, 같은 통계, 같은 리포트 형식을 쓰되 `lab-profile`이 호스트 능력을 자동 감지해서 워크로드만 자동으로 갈라집니다. summary.csv 스키마는 프로파일에 통합되어 있어 `suite-compare`가 호스트 간 직접 비교를 별도 변환 없이 처리합니다.
 
 설계 목표 청중: 재현성/방법론 학회(ACM REP, SC Reproducibility Appendix, BenchCouncil), 엣지·소비자 하드웨어 측정 워크숍. **메인 컨퍼런스 가속기 트랙(MLSys/SC/ISCA 본진)은 8GB Blackwell로는 어림없음** — 그건 클라우드/HPC 자원으로 보내야 함.
 
@@ -19,6 +21,7 @@
 ```bash
 git clone https://github.com/oyeong011/lab-tools.git ~/lab-tools
 cd ~/lab-tools
+python3 -m pip install --user PyYAML
 bash bin/lab-tools-install        # ~/bin, ~/.config/lab, ~/notes 로 복사
 export PATH="$HOME/bin:$PATH"
 lab-doctor                        # 빨간 줄 없는지 확인
@@ -30,9 +33,10 @@ lab-profile          # 이 호스트의 활성 프로파일 출력
 lab-profile detect   # 자동 감지 결과만 (override 무시)
 ```
 
-NVIDIA GPU + nvcc가 모두 있으면 `cuda`, 아니면 `cpu`. 강제 변경:
+NVIDIA GPU + nvcc가 모두 있으면 `cuda`, Darwin arm64면 `apple`, 아니면 `cpu`. 강제 변경:
 ```bash
 lab-profile set cuda     # 영구 (~/.config/lab/profile에 저장)
+lab-profile set apple    # M1/M4에서 자동 감지가 어긋날 때만
 lab-profile clear        # 영구 해제 → 자동 감지로 복귀
 LAB_PROFILE=cpu lab-doctor   # 일회성 환경변수 override
 ```
@@ -81,8 +85,10 @@ lab-host-acceptance --run --uvm-profile
 lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle --check-bundle ~/lab/_acceptance_bundles/<bundle>.tar.gz --expect-profile cuda --require-run --require-uvm-profile
-lab-acceptance-collect --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
-lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
+lab-acceptance-collect --profile cuda --run --uvm-profile --require-provenance --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600 --require-compute-cap 12.0 --require-cuda-sm 120
+lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require-provenance --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600 --require-compute-cap 12.0 --require-cuda-sm 120
+# RTX 5080 호스트는 아래처럼 메모리 게이트만 바꿉니다.
+lab-acceptance-collect --profile cuda --run --uvm-profile --require-provenance --require-gpu-name "RTX 5080" --min-gpu-memory-mib 15000 --require-compute-cap 12.0 --require-cuda-sm 120
 ```
 
 MacBook M1/M4 smoke:
@@ -92,11 +98,19 @@ lab-apple-smoke
 LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
 LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run --run-mps  # optional PyTorch MPS path
 lab-host-acceptance --run
-lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile apple --require-run
-lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile apple --require-run
-lab-acceptance-bundle --check-bundle ~/lab/_acceptance_bundles/<bundle>.tar.gz --expect-profile apple --require-run
-lab-acceptance-collect --profile apple --run
+lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile apple --require-run --require-provenance --require-apple-chip "Apple M1"
+lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile apple --require-run --require-provenance --require-apple-chip "Apple M1"
+lab-acceptance-bundle --check-bundle ~/lab/_acceptance_bundles/<bundle>.tar.gz --expect-profile apple --require-run --require-provenance --require-apple-chip "Apple M1"
+lab-acceptance-collect --profile apple --run --require-provenance --require-apple-chip "Apple M1"
 ```
+
+M4에서는 `"Apple M4"`로 바꿉니다. 모든 장비의 bundle을 한 폴더에 모은 뒤:
+
+```bash
+lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles
+```
+
+이 명령이 `complete=yes`를 출력해야 M1/M4, Intel iGPU, RTX 5060, RTX 5080 전체가 통과한 것입니다.
 
 ## 2. 캠페인 산출물
 
@@ -166,6 +180,8 @@ tar --zstd -xf *.tar.zst -C ~/inbox/
 suite-compare ~/lab/<my_suite> ~/inbox/<bundle>/suite --md ~/notes/cross-host.md
 ```
 
+Acceptance bundle은 `.tar.gz`와 `.tar.gz.sha256` 두 파일만 같이 보존하면 됩니다. 공간이 부족하면 Google Drive 폴더로 옮겨도 되고, 다시 검사할 때는 그 폴더를 `lab-acceptance-matrix --bundle-dir <Google-Drive-folder>`에 넘기면 됩니다.
+
 호스트 A의 OpenCL-on-HD630 vs 호스트 B의 OpenCL-on-Xe vs 호스트 B의 CUDA-on-RTX5060 — 같은 SGEMM 커널을 세 디바이스에서 비교하는 건 페이퍼화 가능한 영역(consumer-tier 가속기 cross-comparison은 발표된 데이터가 적음).
 
 ## 5. 자주 쓰는 명령
@@ -173,6 +189,7 @@ suite-compare ~/lab/<my_suite> ~/inbox/<bundle>/suite --md ~/notes/cross-host.md
 | 목적 | 명령 |
 |---|---|
 | 시스템 점검 | `lab-doctor` |
+| 전체 장비 acceptance 판정 | `lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles` |
 | 하드웨어 보고서 | `hw-report` (저장: `~/lab/_hardware/`) |
 | 단일 워크로드 안전 실행 | `lab-safe-run <experiment> -- <command>` |
 | 단일 캠페인 실행 | `bench-suite-config <name>` (configs: `~/.config/lab/suites/`) |
@@ -191,6 +208,7 @@ suite-compare ~/lab/<my_suite> ~/inbox/<bundle>/suite --md ~/notes/cross-host.md
 ~/.config/lab/                  설정 + 커널 소스
   ├── *.c, *.cu                 OpenCL/CUDA 커널 소스
   ├── suites/                   YAML/env 캠페인 설정
+  ├── acceptance/               필수 호스트 acceptance matrix
   ├── containers/               Containerfile.cpu, Containerfile.cuda
   └── profile                   영구 프로파일 override (선택)
 ~/lab/                          실험 작업 공간 (git에 안 올라감)
@@ -200,6 +218,8 @@ suite-compare ~/lab/<my_suite> ~/inbox/<bundle>/suite --md ~/notes/cross-host.md
   ├── _benchmarks/              cpu/, opencl/, cuda/ 빌드 산출물
   ├── _hardware/                hw-report 출력
   ├── _archives/                lab-archive 결과
+  ├── _acceptance/              호스트 readiness/run 로그
+  ├── _acceptance_bundles/      전송 가능한 acceptance bundle + sha256
   └── _handoffs/                lab-handoff 결과
 ~/lab-tools/                    git repo (소스 미러, push/pull 대상)
 ~/notes/                        문서, 비교 리포트
@@ -262,7 +282,7 @@ suite-compare ~/lab/<my_suite> ~/inbox/<bundle>/suite --md ~/notes/cross-host.md
 - 다중 GPU, >8GB 모델, H100/A100 baseline 비교
 - 분산/HPC 측정
 - AMD ROCm, Intel oneAPI/SYCL (스텁 정도만)
-- Windows / macOS
+- Windows / non-Apple-Silicon macOS
 
 이런 워크로드는 `lab-handoff`로 패키지해서 클라우드(RunPod / Lambda / Vast.ai) 또는 공공 자원(KISTI 누리온, NIPA AI 바우처, 학교 GPU 클러스터)에 보내 실행. 로컬은 개발/방법론 계층으로 유지.
 

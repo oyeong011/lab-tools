@@ -44,13 +44,18 @@ need_cmd() {
 
 failures=0
 section "Commands"
-for cmd in nvidia-smi nvcc python3 lab-profile lab-doctor bench-suite-config bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv bench-cuda-gcn; do
+for cmd in nvidia-smi nvcc python3 lab-profile lab-doctor lab-cuda-arch-flags bench-suite-config bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv bench-cuda-gcn; do
   need_cmd "$cmd" || failures=$((failures + 1))
 done
+
+section "CUDA toolchain"
+nvcc --version || failures=$((failures + 1))
+lab-cuda-arch-flags --verbose || failures=$((failures + 1))
 
 section "NVIDIA device"
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi -L || failures=$((failures + 1))
+  nvidia-smi --query-gpu=index,name,compute_cap,driver_version,cuda_version,memory.total --format=csv || true
   nvidia-smi --query-gpu=name,driver_version,cuda_version,memory.total,power.limit,persistence_mode --format=csv || true
   nvidia-smi topo -m || true
 fi

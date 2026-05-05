@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "targets": [
+    {
+      "name": "macbook-m1",
+      "description": "Apple Silicon MacBook M1 acceptance bundle",
+      "profile": "apple",
+      "require_run": true,
+      "require_provenance": true,
+      "require_apple_chip": ["Apple M1"]
+    },
+    {
+      "name": "macbook-m4",
+      "description": "Apple Silicon MacBook M4 acceptance bundle",
+      "profile": "apple",
+      "require_run": true,
+      "require_provenance": true,
+      "require_apple_chip": ["Apple M4"]
+    },
+    {
+      "name": "ubuntu-intel-igpu",
+      "description": "Ubuntu desktop with Intel CPU/iGPU OpenCL device",
+      "profile": "cpu",
+      "require_run": true,
+      "require_provenance": true,
+      "require_opencl_device": ["Intel"]
+    },
+    {
+      "name": "ubuntu-rtx5060-8gb",
+      "description": "Ubuntu desktop with RTX 5060 8GB and copied Nsight UVM report",
+      "profile": "cuda",
+      "require_run": true,
+      "require_uvm_profile": true,
+      "require_provenance": true,
+      "require_gpu_name": ["RTX 5060"],
+      "min_gpu_memory_mib": 7600,
+      "require_compute_cap": ["12.0"],
+      "require_cuda_sm": ["120"]
+    },
+    {
+      "name": "ubuntu-rtx5080-16gb",
+      "description": "Ubuntu desktop with RTX 5080 16GB and copied Nsight UVM report",
+      "profile": "cuda",
+      "require_run": true,
+      "require_uvm_profile": true,
+      "require_provenance": true,
+      "require_gpu_name": ["RTX 5080"],
+      "min_gpu_memory_mib": 15000,
+      "require_compute_cap": ["12.0"],
+      "require_cuda_sm": ["120"]
+    }
+  ]
+}

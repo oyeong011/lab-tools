@@ -32,7 +32,7 @@ BIN_FILES = [
     "bench-standard-cpu", "bench-stream", "bench-suite", "bench-suite-config",
     "bench-sysbench", "bench-cuda-vector-add", "bench-cuda-gemm", "bench-cuda-uvm-access",
     "bench-cuda-gemv", "bench-cuda-spmv", "bench-cuda-gcn", "bench-apple-metal", "bench-apple-mps",
-    "lab", "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-acceptance-bundle", "lab-acceptance-collect", "lab-acceptance-verify", "lab-doctor", "lab-host-acceptance",
+    "lab", "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-acceptance-bundle", "lab-acceptance-collect", "lab-acceptance-matrix", "lab-acceptance-verify", "lab-cuda-arch-flags", "lab-doctor", "lab-host-acceptance",
     "lab-tools-install", "lab-tools-sync", "lab-handoff", "lab-remote-acceptance", "lab-index", "lab-archive",
     "lab-backup", "lab-plot", "lab-clean",
     "lab-container-build", "lab-container-run", "lab-pipeline", "lab-rtx-smoke", "lab-apple-smoke", "lab-uvm-profile", "lab-validate",
@@ -77,7 +77,7 @@ def write_readme(staging: Path, suite: Path, runs, manifest_excerpt):
         f.write("- `suite/` — full suite directory (summary.csv, stats.csv, monitor logs, reports)\n")
         f.write("- `runs/` — per-run directories referenced by summary.csv\n")
         f.write("- `bin/` — benchmark and pipeline scripts (drop into `~/bin` on the target host)\n")
-        f.write("- `config/lab/` — OpenCL/CUDA/STREAM/OpenBLAS sources, suite configs, and pipeline matrices\n")
+        f.write("- `config/lab/` — OpenCL/CUDA/STREAM/OpenBLAS sources, suite configs, pipeline matrices, and acceptance requirements\n")
         f.write("- `config/lab/containers/` — CPU/OpenCL and CUDA container definitions\n")
         f.write("- `manifest-excerpt.json` — system snapshot for cross-host comparison\n\n")
         f.write("## Reproduction on a target host\n\n")
@@ -91,12 +91,14 @@ def write_readme(staging: Path, suite: Path, runs, manifest_excerpt):
         f.write("esac\n")
         f.write("cd ~/lab-handoff/\"$root\"\n")
         f.write("# Install scripts\n")
-        f.write("mkdir -p ~/bin ~/.config/lab/suites ~/.config/lab/pipelines ~/.config/lab/containers\n")
+        f.write("mkdir -p ~/bin ~/.config/lab/suites ~/.config/lab/pipelines ~/.config/lab/containers ~/.config/lab/templates ~/.config/lab/acceptance\n")
         f.write("for f in bin/*; do install -m 755 \"$f\" ~/bin/; done\n")
         f.write("for f in config/lab/*.c config/lab/*.cu config/lab/*.swift; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/; done\n")
         f.write("for f in config/lab/suites/*; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/suites/; done\n")
         f.write("for f in config/lab/pipelines/*; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/pipelines/; done\n")
         f.write("for f in config/lab/containers/*; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/containers/; done\n")
+        f.write("for f in config/lab/templates/*; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/templates/; done\n")
+        f.write("for f in config/lab/acceptance/*; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/acceptance/; done\n")
         f.write("export PATH=\"$HOME/bin:$PATH\"\n")
         f.write("# Verify\n")
         f.write("lab-doctor\n")
@@ -180,7 +182,7 @@ def stage(suite: Path, include_runs: bool, bundle_name: str):
             src = HOME / ".config" / "lab" / name
         if src.exists():
             shutil.copy2(src, cfg_stage / name)
-    for sub in ("suites", "containers", "pipelines", "templates"):
+    for sub in ("suites", "containers", "pipelines", "templates", "acceptance"):
         src_dir = TOOL_ROOT / "config" / sub
         if not src_dir.exists():
             src_dir = HOME / ".config" / "lab" / sub

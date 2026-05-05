@@ -1,6 +1,6 @@
 # lab-tools
 
-Reproducibility-oriented benchmarking framework for CPU and accelerator workloads on commodity Linux. Designed for two-host operation: a *dev/methodology* host without a GPU, and a *CUDA execution* host with an NVIDIA GPU.
+Reproducibility-oriented benchmarking framework for CPU and accelerator workloads on commodity Linux and Apple Silicon macOS. Designed for multi-host operation: a *dev/methodology* host, Apple Silicon smoke hosts, Intel iGPU hosts, and CUDA execution hosts with NVIDIA GPUs.
 
 ## Profiles
 
@@ -8,6 +8,7 @@ Reproducibility-oriented benchmarking framework for CPU and accelerator workload
 |---|---|---|
 | `cpu`  | CPU + iGPU OpenCL only (no NVIDIA stack) | bench-cpu, bench-standard-cpu, bench-opencl, bench-opencl-gemm |
 | `cuda` | CPU + iGPU OpenCL + NVIDIA GPU + CUDA toolkit | everything in `cpu` plus bench-cuda-vector-add, bench-cuda-gemm, optional bench-cuda-uvm-access |
+| `apple` | macOS Apple Silicon M1/M4 | lab-apple-smoke, bench-apple-metal, optional bench-apple-mps |
 
 ## Research pipeline
 
@@ -60,11 +61,18 @@ lab-host-acceptance --run --uvm-profile   # CUDA hosts: also capture a small Nsi
 lab-acceptance-verify <acceptance_dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle <acceptance_dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle --check-bundle <bundle.tar.gz> --expect-profile cuda --require-run --require-uvm-profile
-lab-acceptance-collect --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
-lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600
-lab-remote-acceptance user@intel-host --profile cpu --require-opencl-device Intel
-lab-acceptance-collect --profile apple --run --require-apple-chip "Apple M1"
+lab-acceptance-collect --profile cuda --run --uvm-profile --require-provenance --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600 --require-compute-cap 12.0 --require-cuda-sm 120
+lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile --require-provenance --require-gpu-name "RTX 5060" --min-gpu-memory-mib 7600 --require-compute-cap 12.0 --require-cuda-sm 120
+lab-remote-acceptance user@intel-host --profile cpu --run --require-provenance --require-opencl-device Intel
+lab-acceptance-collect --profile apple --run --require-provenance --require-apple-chip "Apple M1"
+lab-acceptance-matrix --bundle-dir ~/lab/_acceptance_bundles
 ```
+
+`lab-acceptance-matrix` checks all collected bundles against
+`config/acceptance/required-hosts.json`: MacBook M1, MacBook M4, Ubuntu Intel
+iGPU, Ubuntu RTX 5060 8GB, and Ubuntu RTX 5080 16GB. Bundles are plain
+`.tar.gz` files with `.sha256` sidecars, so they can be moved by `scp`, USB, or
+Google Drive as long as the sidecar is kept with the bundle.
 
 RTX host smoke and UVM mechanism profiling:
 
@@ -72,6 +80,7 @@ RTX host smoke and UVM mechanism profiling:
 lab-rtx-smoke                 # dry readiness check
 lab-rtx-smoke --run           # executes small CUDA UVM/GEMV/SpMV/GCN probes
 lab-uvm-profile --pattern hchi --mb 12288 --passes 2
+LAB_CUDA_ARCH=sm_120 bench-cuda-gemv
 ```
 
 `lab-uvm-profile` uses NVIDIA Nsight Systems Unified Memory CPU/GPU page-fault
@@ -109,11 +118,13 @@ LAB_PROFILE=cpu lab-doctor    # transient
 ```bash
 git clone <THIS-REPO-URL> ~/lab-tools
 cd ~/lab-tools
+python3 -m pip install --user PyYAML  # needed for YAML suites, lab-pipeline, and acceptance validation
 bash bin/lab-tools-install            # copies into ~/bin, ~/.config/lab, ~/notes
 export PATH="$HOME/bin:$PATH"         # if ~/bin is not already in your shell PATH
 lab-doctor                            # sanity check
 lab-host-acceptance                   # reproducible host readiness artifact
 lab-acceptance-verify ~/lab/_acceptance/<dir>
+lab-acceptance-matrix --dry-run       # see required cross-host gates
 ```
 
 For the current completion status and the remaining RTX hardware gate, see
@@ -198,11 +209,12 @@ Active source-of-truth is `~/bin/` and `~/.config/lab/`. After editing, run `lab
 
 ## Out of scope
 
-This framework targets commodity Linux CPU/iGPU and consumer-tier NVIDIA. It does *not* attempt to support:
+This framework targets commodity Linux CPU/iGPU, Apple Silicon smoke testing,
+and consumer-tier NVIDIA CUDA. It does *not* attempt to support:
 
 - Multi-GPU / large LLM training / H100 baselines
 - AMD ROCm or Intel oneAPI/SYCL (stubs only)
 - Distributed/HPC measurement, except planned NCCL/PXN scaffolding
-- macOS execution today; Apple Silicon is a planned profile requiring Metal/MPS and powermetrics work
+- Windows or non-Apple-Silicon macOS execution
 
 For workloads beyond the local hardware envelope, use `lab-handoff` to package a suite and run on cloud-by-hour GPUs (RunPod / Lambda / Vast.ai) or shared cluster resources (KISTI Nurion, NIPA AI 바우처, university GPU clusters).

@@ -70,7 +70,7 @@ esac
 
 case "$CONFIG_PATH" in
   *.yaml)
-    eval "$(python3 - "$CONFIG_PATH" <<'PY'
+    yaml_exports="$(python3 - "$CONFIG_PATH" <<'PY'
 import shlex
 import sys
 import yaml
@@ -129,6 +129,7 @@ for key in sorted(env):
     print(f"export {key}={shlex.quote(env[key])}")
 PY
 )"
+    eval "$yaml_exports"
     ;;
   *.env)
     set -a

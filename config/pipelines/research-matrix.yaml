@@ -4,7 +4,8 @@ sources:
   - id: forest_gpu
     title: "Forest: Access-aware GPU UVM Management"
     venue: ISCA 2025
-    local_pdf: /Users/young/Downloads/Forest_gpu.pdf
+    reference_note: notes/research-pipeline.md
+    source_material: User-provided Forest_gpu.pdf parsed on 2026-05-05; portable access-class summary is kept in the repo note.
     experiment_axes:
       - UVM oversubscription ratio
       - access pattern class
@@ -238,15 +239,18 @@ tracks:
         meaning: Feature dimension for synthetic GCN aggregation.
     metrics:
       lower_is_better:
-        - row_buffer_miss_rate
-        - activation_count
-        - memory_stall_time
-        - energy_j
+        - cuda_kernel_s
+        - duration_s
+        - pkg_energy_j
+        - nvidia_energy_j
       higher_is_better:
-        - effective_bandwidth
-        - ops_per_joule
+        - cuda_bandwidth_gbs
+        - cuda_gemv_gflops
+        - cuda_spmv_gflops
+        - cuda_gcn_gflops
     reviewer_guardrails:
       - The wired path covers CUDA GEMV, SpMV, and synthetic GCN neighbor-aggregation microbenchmarks only.
+      - DRAM row-buffer, activation-count, and memory-stall claims are not emitted by this harness; they require external counter traces or a simulator.
       - Tie every mapping claim to a visible address mapping or trace.
       - Do not infer DRAM row-buffer behavior from wall time alone.
 

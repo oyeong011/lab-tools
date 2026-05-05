@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Print nvcc -gencode flags for the active CUDA GPU.
+set -euo pipefail
+
+VERBOSE=0
+case "${1:-}" in
+  --verbose) VERBOSE=1 ;;
+  -h|--help|help)
+    cat <<'EOF'
+Usage:
+  lab-cuda-arch-flags [--verbose]
+
+Prints nvcc -gencode flags for the active CUDA GPU. Override detection with:
+  LAB_CUDA_ARCH=120
+  LAB_CUDA_ARCH=sm_120
+  LAB_CUDA_ARCH=compute_120
+EOF
+    exit 0
+    ;;
+  "") ;;
+  *) printf 'Unsupported argument: %s\n' "$1" >&2; exit 2 ;;
+esac
+
+normalize_sm() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^0-9.]//g; s/^([0-9]+)\.([0-9]+)$/\1\2/'
+}
+
+source="default"
+sm=""
+
+if [ -n "${LAB_CUDA_ARCH:-}" ]; then
+  source="LAB_CUDA_ARCH"
+  sm="$(normalize_sm "$LAB_CUDA_ARCH")"
+elif command -v nvidia-smi >/dev/null 2>&1; then
+  cap="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  if [ -n "$cap" ]; then
+    source="nvidia-smi"
+    sm="$(normalize_sm "$cap")"
+  fi
+fi
+
+case "$sm" in
+  [0-9][0-9]|[0-9][0-9][0-9]) ;;
+  *)
+    if [ "$VERBOSE" -eq 1 ]; then
+      printf 'cuda_arch_source=%s\n' "$source"
+      printf 'cuda_compute_cap=unknown\n'
+      printf 'cuda_sm=default\n'
+      printf 'cuda_nvcc_flags=<default>\n'
+    fi
+    exit 0
+    ;;
+esac
+
+major="${sm%?}"
+minor="${sm#"$major"}"
+if [ "$VERBOSE" -eq 1 ]; then
+  printf 'cuda_arch_source=%s\n' "$source"
+  printf 'cuda_compute_cap=%s.%s\n' "$major" "$minor"
+  printf 'cuda_sm=%s\n' "$sm"
+  printf 'cuda_nvcc_flags=-gencode=arch=compute_%s,code=sm_%s -gencode=arch=compute_%s,code=compute_%s\n' "$sm" "$sm" "$sm" "$sm"
+else
+  printf '%s\n' "-gencode=arch=compute_${sm},code=sm_${sm}"
+  printf '%s\n' "-gencode=arch=compute_${sm},code=compute_${sm}"
+fi

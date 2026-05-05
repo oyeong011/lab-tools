@@ -20,8 +20,15 @@ if ! command -v nvcc >/dev/null 2>&1; then
 fi
 
 mkdir -p "$BUILD_DIR"
+ARCH_FLAGS=()
+if command -v lab-cuda-arch-flags >/dev/null 2>&1; then
+  while IFS= read -r flag; do
+    [ -n "$flag" ] && ARCH_FLAGS+=("$flag")
+  done < <(lab-cuda-arch-flags)
+fi
 if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
-  nvcc -O2 "$SRC" -o "$BIN"
+  printf 'Build nvcc_arch_flags=%s\n' "${ARCH_FLAGS[*]:-<default>}"
+  nvcc -O2 "${ARCH_FLAGS[@]}" "$SRC" -o "$BIN"
   printf 'Build: compiled %s\n' "$BIN"
 else
   printf 'Build: reused %s\n' "$BIN"

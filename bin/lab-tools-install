@@ -14,7 +14,7 @@ Usage: lab-tools-install [--dry-run]
 
 Installs lab-tools into:
   ~/bin/                        all bench/lab/* scripts
-  ~/.config/lab/                .c kernels, suite configs, container templates
+  ~/.config/lab/                kernels, suites, pipelines, acceptance config
   ~/notes/                      reference docs
 
 After install, run:
@@ -57,7 +57,7 @@ install_file() {
   fi
 }
 
-run mkdir -p "$HOME/bin" "$HOME/.config/lab/suites" "$HOME/.config/lab/containers" "$HOME/.config/lab/templates" "$HOME/.config/lab/pipelines" "$HOME/notes"
+run mkdir -p "$HOME/bin" "$HOME/.config/lab/suites" "$HOME/.config/lab/containers" "$HOME/.config/lab/templates" "$HOME/.config/lab/pipelines" "$HOME/.config/lab/acceptance" "$HOME/notes"
 
 installed_bin=0
 for src in "$REPO_DIR/bin/"*; do
@@ -75,7 +75,7 @@ for src in "$REPO_DIR/config/"*.c "$REPO_DIR/config/"*.cu "$REPO_DIR/config/"*.s
   installed_cfg=$((installed_cfg + 1))
 done
 
-for sub in suites containers templates pipelines; do
+for sub in suites containers templates pipelines acceptance; do
   if [ -d "$REPO_DIR/config/$sub" ]; then
     for src in "$REPO_DIR/config/$sub/"*; do
       [ -f "$src" ] || continue

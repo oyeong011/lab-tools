@@ -3,6 +3,7 @@ set -euo pipefail
 
 RUN=0
 UVM_PROFILE=0
+REQUIRE_PROVENANCE=0
 DRY_RUN=0
 PROFILE=""
 OUT=""
@@ -11,6 +12,10 @@ MIN_GPU_MEMORY_MIB=""
 OPENCL_DEVICES=()
 GPU_NAME_COUNT=0
 OPENCL_DEVICE_COUNT=0
+COMPUTE_CAPS=()
+CUDA_SMS=()
+COMPUTE_CAP_COUNT=0
+CUDA_SM_COUNT=0
 APPLE_CHIPS=()
 APPLE_CHIP_COUNT=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,8 +24,9 @@ PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 usage() {
   cat <<'EOF'
 Usage:
-  lab-acceptance-collect [--profile cpu|cuda|apple] [--run] [--uvm-profile] [--out DIR_OR_TAR_GZ] [--dry-run]
+  lab-acceptance-collect [--profile cpu|cuda|apple] [--run] [--uvm-profile] [--require-provenance] [--out DIR_OR_TAR_GZ] [--dry-run]
                          [--require-gpu-name SUBSTRING] [--min-gpu-memory-mib MIB]
+                         [--require-compute-cap VERSION] [--require-cuda-sm SM]
                          [--require-opencl-device SUBSTRING]
                          [--require-apple-chip SUBSTRING]
 
@@ -45,9 +51,12 @@ while [ $# -gt 0 ]; do
       ;;
     --run) RUN=1; shift ;;
     --uvm-profile) UVM_PROFILE=1; shift ;;
+    --require-provenance) REQUIRE_PROVENANCE=1; shift ;;
     --out) OUT="${2:-}"; [ -n "$OUT" ] || { usage >&2; exit 2; }; shift 2 ;;
     --require-gpu-name) GPU_NAMES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; GPU_NAME_COUNT=$((GPU_NAME_COUNT + 1)); shift 2 ;;
     --min-gpu-memory-mib) MIN_GPU_MEMORY_MIB="${2:-}"; [ -n "$MIN_GPU_MEMORY_MIB" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --require-compute-cap) COMPUTE_CAPS+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; COMPUTE_CAP_COUNT=$((COMPUTE_CAP_COUNT + 1)); shift 2 ;;
+    --require-cuda-sm) CUDA_SMS+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; CUDA_SM_COUNT=$((CUDA_SM_COUNT + 1)); shift 2 ;;
     --require-opencl-device) OPENCL_DEVICES+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; OPENCL_DEVICE_COUNT=$((OPENCL_DEVICE_COUNT + 1)); shift 2 ;;
     --require-apple-chip) APPLE_CHIPS+=("${2:-}"); [ -n "${2:-}" ] || { usage >&2; exit 2; }; APPLE_CHIP_COUNT=$((APPLE_CHIP_COUNT + 1)); shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -65,7 +74,7 @@ if [ "$UVM_PROFILE" -eq 1 ] && [ "$active_profile" != cuda ]; then
   printf 'error: --uvm-profile requires cuda profile, active profile is %s\n' "$active_profile" >&2
   exit 2
 fi
-if { [ "$GPU_NAME_COUNT" -gt 0 ] || [ -n "$MIN_GPU_MEMORY_MIB" ]; } && [ "$active_profile" != cuda ]; then
+if { [ "$GPU_NAME_COUNT" -gt 0 ] || [ -n "$MIN_GPU_MEMORY_MIB" ] || [ "$COMPUTE_CAP_COUNT" -gt 0 ] || [ "$CUDA_SM_COUNT" -gt 0 ]; } && [ "$active_profile" != cuda ]; then
   printf 'error: GPU hardware requirements require cuda profile, active profile is %s\n' "$active_profile" >&2
   exit 2
 fi
@@ -84,6 +93,9 @@ if [ "$UVM_PROFILE" -eq 1 ]; then
   host_args+=("--uvm-profile")
   verify_args+=("--require-uvm-profile")
 fi
+if [ "$REQUIRE_PROVENANCE" -eq 1 ]; then
+  verify_args+=("--require-provenance")
+fi
 if [ "$GPU_NAME_COUNT" -gt 0 ]; then
   for gpu_name in "${GPU_NAMES[@]}"; do
     verify_args+=("--require-gpu-name" "$gpu_name")
@@ -91,6 +103,16 @@ if [ "$GPU_NAME_COUNT" -gt 0 ]; then
 fi
 if [ -n "$MIN_GPU_MEMORY_MIB" ]; then
   verify_args+=("--min-gpu-memory-mib" "$MIN_GPU_MEMORY_MIB")
+fi
+if [ "$COMPUTE_CAP_COUNT" -gt 0 ]; then
+  for compute_cap in "${COMPUTE_CAPS[@]}"; do
+    verify_args+=("--require-compute-cap" "$compute_cap")
+  done
+fi
+if [ "$CUDA_SM_COUNT" -gt 0 ]; then
+  for cuda_sm in "${CUDA_SMS[@]}"; do
+    verify_args+=("--require-cuda-sm" "$cuda_sm")
+  done
 fi
 if [ "$OPENCL_DEVICE_COUNT" -gt 0 ]; then
   for opencl_device in "${OPENCL_DEVICES[@]}"; do

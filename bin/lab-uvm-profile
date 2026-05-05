@@ -71,13 +71,28 @@ LAB_UVM_PATTERN="$PATTERN" LAB_UVM_MB="$MB" LAB_UVM_PASSES="$PASSES" \
     --output="$OUT_PREFIX" \
     bench-cuda-uvm-access
 
-if command -v nsys >/dev/null 2>&1; then
-  STATS_DIR="${OUT_PREFIX}-stats"
-  mkdir -p "$STATS_DIR"
-  for report in um_sum um_total_sum um_cpu_page_faults_sum cuda_gpu_mem_time_sum cuda_gpu_mem_size_sum cuda_gpu_kern_sum cuda_api_sum; do
-    nsys stats --report "$report" --format csv --output "$STATS_DIR/$report" "${OUT_PREFIX}.nsys-rep" >/dev/null 2>&1 || true
-  done
-  printf 'stats_dir=%s\n' "$STATS_DIR"
+STATS_DIR="${OUT_PREFIX}-stats"
+mkdir -p "$STATS_DIR"
+uvm_stats=0
+for report in um_sum um_total_sum um_cpu_page_faults_sum cuda_gpu_mem_time_sum cuda_gpu_mem_size_sum cuda_gpu_kern_sum cuda_api_sum; do
+  if nsys stats --report "$report" --format csv --output "$STATS_DIR/$report" "${OUT_PREFIX}.nsys-rep" >/dev/null 2>&1; then
+    csv="$STATS_DIR/$report.csv"
+    [ -s "$csv" ] || csv="$STATS_DIR/$report"
+    if [ -s "$csv" ]; then
+      printf 'stats_csv=%s\n' "$csv"
+      case "$report" in
+        um_sum|um_total_sum|um_cpu_page_faults_sum) uvm_stats=$((uvm_stats + 1)) ;;
+      esac
+    fi
+  else
+    printf 'warn nsys stats report failed: %s\n' "$report" >&2
+  fi
+done
+printf 'stats_dir=%s\n' "$STATS_DIR"
+printf 'uvm_stats_csv_count=%s\n' "$uvm_stats"
+if [ "$uvm_stats" -eq 0 ]; then
+  printf 'error no non-empty Nsight UVM stats CSV exported\n' >&2
+  exit 1
 fi
 
 printf 'nsys_report=%s.nsys-rep\n' "$OUT_PREFIX"
