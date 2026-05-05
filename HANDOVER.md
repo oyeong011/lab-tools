@@ -82,6 +82,7 @@ lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile cuda --require-ru
 lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle --check-bundle ~/lab/_acceptance_bundles/<bundle>.tar.gz --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-collect --profile cuda --run --uvm-profile
+lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile
 ```
 
 MacBook M1/M4 smoke:

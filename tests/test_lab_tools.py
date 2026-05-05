@@ -112,6 +112,17 @@ class LabToolsSmokeTests(unittest.TestCase):
         ]).stdout
         self.assertIn("DRY lab-host-acceptance --run --uvm-profile", out)
         self.assertIn("DRY lab-acceptance-bundle --check-bundle", out)
+        out = self.run_cmd([
+            "bin/lab-remote-acceptance",
+            "user@rtx-host",
+            "--dry-run",
+            "--profile",
+            "cuda",
+            "--run",
+            "--uvm-profile",
+        ]).stdout
+        self.assertIn("DRY remote collect: lab-acceptance-collect --profile cuda --run --uvm-profile", out)
+        self.assertIn("DRY local verify: lab-acceptance-bundle --check-bundle", out)
         with tempfile.TemporaryDirectory() as td:
             artifact = Path(td)
             for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "rtx-smoke-dry", "forest-uvm-config", "memory-kernels-config", "memory-kernels-sweep-plan", "rtx-smoke-run", "uvm-profile-small"]:
@@ -197,6 +208,7 @@ class LabToolsSmokeTests(unittest.TestCase):
         self.assertIn("lab-tools-install", handoff)
         self.assertIn("lab-acceptance-bundle", handoff)
         self.assertIn("lab-acceptance-collect", handoff)
+        self.assertIn("lab-remote-acceptance", handoff)
         self.assertIn("*.tar.gz|*.tgz", handoff)
         self.assertIn("export PATH=", handoff)
         self.assertIn("hashlib", handoff)
@@ -290,6 +302,7 @@ class LabToolsSmokeTests(unittest.TestCase):
                 names = tar.getnames()
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-bundle") for name in names))
             self.assertTrue(any(name.endswith("/bin/lab-acceptance-collect") for name in names))
+            self.assertTrue(any(name.endswith("/bin/lab-remote-acceptance") for name in names))
             with (suite / "summary.csv").open(newline="") as f:
                 rows = list(csv.DictReader(f))
             self.assertEqual(rows[0]["workload"], "opencl-vector")

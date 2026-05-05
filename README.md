@@ -61,6 +61,7 @@ lab-acceptance-verify <acceptance_dir> --expect-profile cuda --require-run --req
 lab-acceptance-bundle <acceptance_dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle --check-bundle <bundle.tar.gz> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-collect --profile cuda --run --uvm-profile
+lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile
 ```
 
 RTX host smoke and UVM mechanism profiling:

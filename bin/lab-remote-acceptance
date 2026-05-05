@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_URL="${LAB_TOOLS_REPO_URL:-https://github.com/oyeong011/lab-tools.git}"
+REMOTE_DIR="${LAB_REMOTE_ACCEPTANCE_DIR:-lab-tools}"
+LOCAL_OUT="${LAB_REMOTE_ACCEPTANCE_OUT:-$HOME/lab/_remote_acceptance}"
+PROFILE=""
+RUN=0
+UVM_PROFILE=0
+DRY_RUN=0
+TARGET=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-remote-acceptance SSH_TARGET [--profile cpu|cuda|apple] [--run] [--uvm-profile]
+                                 [--repo-url URL] [--remote-dir DIR] [--out DIR]
+                                 [--dry-run]
+
+Connects to SSH_TARGET, clones or updates lab-tools, installs it into that
+remote user's home directory, runs lab-acceptance-collect, copies the generated
+acceptance bundle back, and verifies the copied bundle locally.
+
+Example:
+  lab-remote-acceptance user@rtx-host --profile cuda --run --uvm-profile
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --profile)
+      case "${2:-}" in
+        cpu|cuda|apple) PROFILE="$2"; shift 2 ;;
+        *) usage >&2; exit 2 ;;
+      esac
+      ;;
+    --run) RUN=1; shift ;;
+    --uvm-profile) UVM_PROFILE=1; shift ;;
+    --repo-url) REPO_URL="${2:-}"; [ -n "$REPO_URL" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --remote-dir) REMOTE_DIR="${2:-}"; [ -n "$REMOTE_DIR" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --out) LOCAL_OUT="${2:-}"; [ -n "$LOCAL_OUT" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help|help) usage; exit 0 ;;
+    --*) usage >&2; exit 2 ;;
+    *)
+      if [ -n "$TARGET" ]; then
+        usage >&2
+        exit 2
+      fi
+      TARGET="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$TARGET" ]; then
+  usage >&2
+  exit 2
+fi
+if [ "$UVM_PROFILE" -eq 1 ] && [ "$PROFILE" != cuda ]; then
+  printf 'error: --uvm-profile requires --profile cuda\n' >&2
+  exit 2
+fi
+
+collect_args=()
+check_args=()
+if [ -n "$PROFILE" ]; then
+  collect_args+=("--profile" "$PROFILE")
+  check_args+=("--expect-profile" "$PROFILE")
+fi
+if [ "$RUN" -eq 1 ]; then
+  collect_args+=("--run")
+  check_args+=("--require-run")
+fi
+if [ "$UVM_PROFILE" -eq 1 ]; then
+  collect_args+=("--uvm-profile")
+  check_args+=("--require-uvm-profile")
+fi
+
+print_words() {
+  local first=1
+  for word in "$@"; do
+    if [ "$first" -eq 1 ]; then
+      first=0
+    else
+      printf ' '
+    fi
+    printf '%q' "$word"
+  done
+}
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  printf 'DRY ssh target: %s\n' "$TARGET"
+  printf 'DRY repo-url: %s\n' "$REPO_URL"
+  printf 'DRY remote-dir: %s\n' "$REMOTE_DIR"
+  printf 'DRY local-out: %s\n' "$LOCAL_OUT"
+  printf 'DRY remote collect: lab-acceptance-collect'
+  if [ "${#collect_args[@]}" -gt 0 ]; then
+    printf ' '
+    print_words "${collect_args[@]}"
+  fi
+  printf '\n'
+  printf 'DRY copy: scp %s:<acceptance_bundle> %s/\n' "$TARGET" "$LOCAL_OUT"
+  printf 'DRY local verify: lab-acceptance-bundle --check-bundle <copied_bundle>'
+  if [ "${#check_args[@]}" -gt 0 ]; then
+    printf ' '
+    print_words "${check_args[@]}"
+  fi
+  printf '\n'
+  exit 0
+fi
+
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
+
+set +e
+ssh "$TARGET" bash -s -- "$REPO_URL" "$REMOTE_DIR" "${collect_args[@]}" <<'REMOTE' | tee "$log"
+set -euo pipefail
+repo_url="$1"
+remote_dir="$2"
+shift 2
+case "$remote_dir" in
+  /*) repo_dir="$remote_dir" ;;
+  *) repo_dir="$HOME/$remote_dir" ;;
+esac
+command -v git >/dev/null 2>&1 || { printf 'error: git not found on remote host\n' >&2; exit 127; }
+if [ -d "$repo_dir/.git" ]; then
+  git -C "$repo_dir" pull --ff-only
+else
+  mkdir -p "$(dirname "$repo_dir")"
+  git clone "$repo_url" "$repo_dir"
+fi
+cd "$repo_dir"
+bash bin/lab-tools-install
+export PATH="$HOME/bin:$PATH"
+lab-acceptance-collect "$@"
+REMOTE
+remote_rc=${PIPESTATUS[0]}
+set -e
+if [ "$remote_rc" -ne 0 ]; then
+  exit "$remote_rc"
+fi
+
+bundle_path="$(sed -n 's/^acceptance_bundle=//p' "$log" | tail -n 1)"
+if [ -z "$bundle_path" ]; then
+  printf 'error: acceptance_bundle not found in remote output\n' >&2
+  exit 1
+fi
+
+mkdir -p "$LOCAL_OUT"
+scp "$TARGET:$bundle_path" "$LOCAL_OUT/"
+scp "$TARGET:$bundle_path.sha256" "$LOCAL_OUT/"
+
+local_bundle="$LOCAL_OUT/$(basename "$bundle_path")"
+lab-acceptance-bundle --check-bundle "$local_bundle" "${check_args[@]}"
+
+printf '\nremote_acceptance_bundle=%s\n' "$local_bundle"
