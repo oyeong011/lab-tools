@@ -33,7 +33,7 @@ covering:
 | CUDA memory kernels | `config/cuda-memory-kernels.cu`, `bench-cuda-gemv`, `bench-cuda-spmv`, `bench-cuda-gcn` | Unit tests cover summary/report/stat columns and sweep generation | Done for code, blocked for RTX runtime |
 | Apple Silicon path | `bin/lab-apple-smoke`, `bench-apple-metal`, `bench-apple-mps` | Apple collect and acceptance bundle passed on this Mac | Done |
 | Acceptance artifact generation | `bin/lab-host-acceptance` | Local Apple acceptance artifact generated under `~/lab/_acceptance` | Done |
-| Acceptance verification | `bin/lab-acceptance-verify` | Verifies required steps, logs, status, and profile-specific run gates | Done |
+| Acceptance verification | `bin/lab-acceptance-verify` | Verifies required steps, logs, status, profile-specific run gates, and copied Nsight UVM reports when required | Done |
 | Transfer bundle | `bin/lab-acceptance-bundle` | Creates `.tar.gz` plus `.sha256`; `--check-bundle` verifies sidecar, internal hashes, and acceptance | Done |
 | One-command host collection | `bin/lab-acceptance-collect` | Apple actual run passed; CUDA dry-run shows required commands | Done |
 | SSH automation | `bin/lab-remote-acceptance` | Fresh clone remote dry-run passes; actual run requires SSH target | Ready |

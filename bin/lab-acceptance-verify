@@ -99,6 +99,13 @@ def parse_gpu_memory_mib(text):
     return values
 
 
+def uvm_profile_artifacts(root):
+    profile_dir = root / "profiles"
+    if not profile_dir.exists():
+        return []
+    return [p for p in profile_dir.rglob("*") if p.is_file() and p.suffix == ".nsys-rep"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifact", help="Acceptance directory or acceptance.json")
@@ -156,6 +163,11 @@ def main():
             errors.append(f"step {name} exit_code={rc}")
         if not log_exists(root, step.get("log", "")):
             errors.append(f"step {name} log missing: {step.get('log', '')}")
+
+    if profile == "cuda" and args.require_uvm_profile:
+        artifacts = uvm_profile_artifacts(root)
+        if not artifacts:
+            errors.append("missing copied Nsight UVM report under profiles/*.nsys-rep")
 
     if args.require_gpu_name or args.min_gpu_memory_mib is not None:
         if profile != "cuda":

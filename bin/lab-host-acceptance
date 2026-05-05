@@ -99,6 +99,23 @@ for item in "${steps[@]}"; do
   bash -c "$cmd" >> "$log" 2>&1
   rc=$?
   set -e
+  if [ "$name" = "uvm-profile-small" ] && [ "$rc" -eq 0 ]; then
+    profile_stage="$out_dir/profiles"
+    mkdir -p "$profile_stage"
+    report="$(sed -n 's/^nsys_report=//p' "$log" | tail -n 1)"
+    stats_dir="$(sed -n 's/^stats_dir=//p' "$log" | tail -n 1)"
+    if [ -n "$report" ] && [ -f "$report" ]; then
+      cp -p "$report" "$profile_stage/"
+      printf 'copied_nsys_report=%s\n' "$profile_stage/$(basename "$report")" >> "$log"
+    else
+      printf 'missing nsys_report artifact: %s\n' "${report:-<empty>}" >> "$log"
+      rc=1
+    fi
+    if [ -n "$stats_dir" ] && [ -d "$stats_dir" ]; then
+      cp -R "$stats_dir" "$profile_stage/"
+      printf 'copied_stats_dir=%s\n' "$profile_stage/$(basename "$stats_dir")" >> "$log"
+    fi
+  fi
   if [ "$rc" -eq 0 ]; then
     status=ok
   else

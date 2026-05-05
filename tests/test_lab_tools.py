@@ -142,6 +142,9 @@ class LabToolsSmokeTests(unittest.TestCase):
                 "name, driver_version, cuda_version, memory.total [MiB], power.limit [W], persistence_mode\n"
                 "NVIDIA GeForce RTX 5060, 580.88, 13.0, 8188 MiB, 145.00 W, Enabled\n"
             )
+            profiles = artifact / "profiles"
+            profiles.mkdir()
+            (profiles / "uvm-ls-512mb-test.nsys-rep").write_text("fake nsys report\n")
             steps = [
                 {"name": name, "status": "ok", "exit_code": "0", "log": f"{name}.log", "command": name}
                 for name in ["profile", "doctor", "matrix-validate", "baseline-config", "pipeline-cpu-plan", "rtx-smoke-dry", "forest-uvm-config", "memory-kernels-config", "memory-kernels-sweep-plan", "rtx-smoke-run", "uvm-profile-small"]
