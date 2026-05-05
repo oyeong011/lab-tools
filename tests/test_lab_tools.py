@@ -175,8 +175,11 @@ class LabToolsSmokeTests(unittest.TestCase):
             self.assertFalse((Path(td) / ".config" / "lab").exists())
         handoff = (BIN / "lab-handoff").read_text()
         self.assertIn("lab-tools-install", handoff)
+        self.assertIn("lab-acceptance-bundle", handoff)
         self.assertIn("*.tar.gz|*.tgz", handoff)
         self.assertIn("export PATH=", handoff)
+        self.assertIn("hashlib", handoff)
+        self.assertNotIn("sha256sum", handoff)
 
     def test_summary_stats_and_validation_on_fixture_suite(self):
         with tempfile.TemporaryDirectory() as td:
@@ -251,6 +254,20 @@ class LabToolsSmokeTests(unittest.TestCase):
             )
             self.run_cmd(["bin/render-suite-report", str(suite)])
             self.run_cmd(["bin/lab-validate", "suite-dir", str(suite)])
+            handoff_target = root / "suite-handoff.tar.gz"
+            handoff_out = self.run_cmd([
+                "bin/lab-handoff",
+                str(suite),
+                "--out",
+                str(handoff_target),
+                "--no-include-runs",
+            ]).stdout
+            handoff_path = Path(handoff_out.splitlines()[0])
+            self.assertTrue(handoff_path.exists())
+            self.assertTrue(Path(str(handoff_path) + ".sha256").exists())
+            with tarfile.open(handoff_path, "r:gz") as tar:
+                names = tar.getnames()
+            self.assertTrue(any(name.endswith("/bin/lab-acceptance-bundle") for name in names))
             with (suite / "summary.csv").open(newline="") as f:
                 rows = list(csv.DictReader(f))
             self.assertEqual(rows[0]["workload"], "opencl-vector")

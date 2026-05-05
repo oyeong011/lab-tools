@@ -11,6 +11,7 @@ Usage:
 """
 import argparse
 import csv
+import hashlib
 import json
 import os
 import shutil
@@ -31,7 +32,7 @@ BIN_FILES = [
     "bench-standard-cpu", "bench-stream", "bench-suite", "bench-suite-config",
     "bench-sysbench", "bench-cuda-vector-add", "bench-cuda-gemm", "bench-cuda-uvm-access",
     "bench-cuda-gemv", "bench-cuda-spmv", "bench-cuda-gcn", "bench-apple-metal", "bench-apple-mps",
-    "lab", "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-acceptance-verify", "lab-doctor", "lab-host-acceptance",
+    "lab", "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-acceptance-bundle", "lab-acceptance-verify", "lab-doctor", "lab-host-acceptance",
     "lab-tools-install", "lab-tools-sync", "lab-handoff", "lab-index", "lab-archive",
     "lab-backup", "lab-plot", "lab-clean",
     "lab-container-build", "lab-container-run", "lab-pipeline", "lab-rtx-smoke", "lab-apple-smoke", "lab-uvm-profile", "lab-validate",
@@ -202,14 +203,33 @@ def archive(staging: Path, out_path: Path):
     out_path.parent.mkdir(parents=True, exist_ok=True)
     parent = staging.parent
     name = staging.name
-    if shutil.which("zstd"):
+    if out_path.name.endswith(".tar.zst") and shutil.which("zstd"):
         subprocess.run(["tar", "--zstd", "-cf", str(out_path), "-C", str(parent), name], check=True)
     else:
-        out_path = out_path.with_suffix(".tar.gz")
+        out_path = tar_gz_path(out_path)
         subprocess.run(["tar", "-czf", str(out_path), "-C", str(parent), name], check=True)
-    sha = subprocess.run(["sha256sum", str(out_path)], capture_output=True, text=True, check=True).stdout
+    sha = f"{sha256_file(out_path)}  {out_path.name}\n"
     (out_path.parent / (out_path.name + ".sha256")).write_text(sha)
     return out_path
+
+
+def tar_gz_path(path: Path):
+    name = path.name
+    if name.endswith((".tar.gz", ".tgz")):
+        return path
+    if name.endswith(".tar.zst"):
+        return path.with_name(name[:-8] + ".tar.gz")
+    if name.endswith(".tar"):
+        return path.with_name(name[:-4] + ".tar.gz")
+    return path.with_name(name + ".tar.gz")
+
+
+def sha256_file(path: Path):
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def main():
