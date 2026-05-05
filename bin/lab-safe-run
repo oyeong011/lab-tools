@@ -6,7 +6,8 @@ TIMEOUT="${LAB_TIMEOUT:-10m}"
 CPUSET="${LAB_CPUSET:-}"
 MAX_TEMP_C="${LAB_MAX_TEMP_C:-85}"
 MONITOR_INTERVAL="${LAB_MONITOR_INTERVAL:-2}"
-PATH="$HOME/bin:$PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 
 RAPL_PKG_PATH=""
 RAPL_CORE_PATH=""
@@ -92,7 +93,7 @@ if [ ! -d "$workdir" ]; then
 fi
 
 mkdir -p "$run_dir"
-started_at="$(date --iso-8601=seconds)"
+started_at="$(date -Iseconds)"
 
 {
   printf 'run_id=%s\n' "$run_id"
@@ -113,7 +114,7 @@ if ! thermal-check "$MAX_TEMP_C" > "$run_dir/thermal-before.txt" 2>&1; then
   printf 'Thermal guard refused to start. See: %s\n' "$run_dir/thermal-before.txt" >&2
   printf '99\n' > "$run_dir/status.txt"
   printf 'thermal_precheck\n' > "$run_dir/failure-reason.txt"
-  python3 - "$run_dir" "$started_at" "$(date --iso-8601=seconds)" 99 thermal_precheck <<'PY'
+  python3 - "$run_dir" "$started_at" "$(date -Iseconds)" 99 thermal_precheck <<'PY'
 import json, sys
 run_dir, started, ended, status, reason = sys.argv[1:]
 open(f"{run_dir}/result.json", "w").write(json.dumps({
@@ -132,7 +133,7 @@ cmd+=("$@")
 
 sample_monitor() {
   local timestamp max_temp cpu_scaling load1 mem_available_kib pkg core uncore dram nv
-  timestamp="$(date --iso-8601=seconds)"
+  timestamp="$(date -Iseconds)"
   max_temp="$(thermal-check 999 2>/dev/null | sed -n 's/^max_temp_c=\([^ ]*\).*/\1/p' || true)"
   cpu_scaling="$(lscpu 2>/dev/null | sed -n 's/^CPU(s) scaling MHz:[[:space:]]*//p' | head -n 1)"
   load1="$(awk '{print $1}' /proc/loadavg 2>/dev/null || true)"
@@ -183,7 +184,7 @@ fi
 sensor-snapshot > "$run_dir/sensors-after.txt" 2>&1 || true
 thermal-check "$MAX_TEMP_C" > "$run_dir/thermal-after.txt" 2>&1 || true
 printf '%s\n' "$status" > "$run_dir/status.txt"
-ended_at="$(date --iso-8601=seconds)"
+ended_at="$(date -Iseconds)"
 reason="none"
 if [ "$status" -eq 124 ]; then
   reason="timeout"

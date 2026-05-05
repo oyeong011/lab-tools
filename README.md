@@ -55,7 +55,7 @@ RTX host smoke and UVM mechanism profiling:
 
 ```bash
 lab-rtx-smoke                 # dry readiness check
-lab-rtx-smoke --run           # executes small CUDA UVM/GEMV/SpMV probes
+lab-rtx-smoke --run           # executes small CUDA UVM/GEMV/SpMV/GCN probes
 lab-uvm-profile --pattern hchi --mb 12288 --passes 2
 ```
 
@@ -76,6 +76,7 @@ Apple Silicon smoke:
 ```bash
 lab-apple-smoke
 LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
+LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run --run-mps   # optional PyTorch MPS smoke
 ```
 
 The profile auto-detects from `nvidia-smi` + `nvcc`. Override:
@@ -94,6 +95,7 @@ LAB_PROFILE=cpu lab-doctor    # transient
 git clone <THIS-REPO-URL> ~/lab-tools
 cd ~/lab-tools
 bash bin/lab-tools-install            # copies into ~/bin, ~/.config/lab, ~/notes
+export PATH="$HOME/bin:$PATH"         # if ~/bin is not already in your shell PATH
 lab-doctor                            # sanity check
 ```
 

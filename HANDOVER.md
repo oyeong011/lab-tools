@@ -20,6 +20,7 @@
 git clone https://github.com/oyeong011/lab-tools.git ~/lab-tools
 cd ~/lab-tools
 bash bin/lab-tools-install        # ~/bin, ~/.config/lab, ~/notes 로 복사
+export PATH="$HOME/bin:$PATH"
 lab-doctor                        # 빨간 줄 없는지 확인
 ```
 
@@ -69,6 +70,7 @@ page fault, migration, thrashing 주장은 CUPTI/Nsight/driver counter 또는
 RTX 5060/5080 호스트에서 실제 smoke:
 ```bash
 lab-profile set cuda
+export PATH="$HOME/bin:$PATH"
 lab-rtx-smoke
 lab-rtx-smoke --run
 lab-uvm-profile --pattern hchi --mb 12288 --passes 2
@@ -77,8 +79,10 @@ bench-suite-config memory-kernels
 
 MacBook M1/M4 smoke:
 ```bash
+export PATH="$HOME/bin:$PATH"
 lab-apple-smoke
 LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
+LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run --run-mps  # optional PyTorch MPS path
 ```
 
 ## 2. 캠페인 산출물
@@ -133,6 +137,7 @@ cd ~/lab-tools && git push
 # 호스트 B에서
 cd ~/lab-tools && git pull
 bash bin/lab-tools-install
+export PATH="$HOME/bin:$PATH"
 ```
 
 ### 결과 데이터 전파 (호스트 B → A 또는 그 반대)

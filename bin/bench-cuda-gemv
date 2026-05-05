@@ -3,7 +3,11 @@ set -euo pipefail
 
 LAB_HOME="${LAB_HOME:-$HOME/lab}"
 N="${1:-${LAB_GEMV_SIZE:-4096}}"
-SRC="$HOME/.config/lab/cuda-memory-kernels.cu"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC="$SCRIPT_DIR/../config/cuda-memory-kernels.cu"
+if [ ! -f "$SRC" ]; then
+  SRC="$HOME/.config/lab/cuda-memory-kernels.cu"
+fi
 BUILD_DIR="$LAB_HOME/_benchmarks/cuda"
 BIN="$BUILD_DIR/cuda-memory-kernels"
 OUT="$BUILD_DIR/cuda-gemv-${N}-$(date +%Y%m%d-%H%M%S).txt"

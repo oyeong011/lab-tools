@@ -4,7 +4,8 @@
 # Idempotent. Safe to re-run after `git pull`.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 DRY_RUN=0
 
 usage() {
@@ -44,21 +45,33 @@ run() {
   fi
 }
 
-mkdir -p "$HOME/bin" "$HOME/.config/lab/suites" "$HOME/.config/lab/containers" "$HOME/.config/lab/templates" "$HOME/.config/lab/pipelines" "$HOME/notes"
+install_file() {
+  local mode="$1"
+  local src="$2"
+  local dst="$3"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf 'DRY: install -m %s %s %s\n' "$mode" "$src" "$dst"
+  else
+    mkdir -p "$(dirname "$dst")"
+    install -m "$mode" "$src" "$dst"
+  fi
+}
+
+run mkdir -p "$HOME/bin" "$HOME/.config/lab/suites" "$HOME/.config/lab/containers" "$HOME/.config/lab/templates" "$HOME/.config/lab/pipelines" "$HOME/notes"
 
 installed_bin=0
 for src in "$REPO_DIR/bin/"*; do
   [ -f "$src" ] || continue
   name="$(basename "$src")"
   dst="$HOME/bin/$name"
-  run install -Dm755 "$src" "$dst"
+  install_file 755 "$src" "$dst"
   installed_bin=$((installed_bin + 1))
 done
 
 installed_cfg=0
 for src in "$REPO_DIR/config/"*.c "$REPO_DIR/config/"*.cu "$REPO_DIR/config/"*.swift; do
   [ -f "$src" ] || continue
-  run install -Dm644 "$src" "$HOME/.config/lab/$(basename "$src")"
+  install_file 644 "$src" "$HOME/.config/lab/$(basename "$src")"
   installed_cfg=$((installed_cfg + 1))
 done
 
@@ -66,7 +79,7 @@ for sub in suites containers templates pipelines; do
   if [ -d "$REPO_DIR/config/$sub" ]; then
     for src in "$REPO_DIR/config/$sub/"*; do
       [ -f "$src" ] || continue
-      run install -Dm644 "$src" "$HOME/.config/lab/$sub/$(basename "$src")"
+      install_file 644 "$src" "$HOME/.config/lab/$sub/$(basename "$src")"
       installed_cfg=$((installed_cfg + 1))
     done
   fi
@@ -75,7 +88,7 @@ done
 if [ -d "$REPO_DIR/notes" ]; then
   for src in "$REPO_DIR/notes/"*; do
     [ -f "$src" ] || continue
-    run install -Dm644 "$src" "$HOME/notes/$(basename "$src")"
+    install_file 644 "$src" "$HOME/notes/$(basename "$src")"
   done
 fi
 
@@ -83,5 +96,9 @@ printf 'Installed %d scripts into ~/bin and %d config files into ~/.config/lab.\
 if [ "$DRY_RUN" -eq 1 ]; then
   printf 'Dry-run only. Nothing copied.\n'
 else
+  case ":$PATH:" in
+    *":$HOME/bin:"*) ;;
+    *) printf 'Add ~/bin to PATH for this shell, for example: export PATH="$HOME/bin:$PATH"\n' ;;
+  esac
   printf 'Run `lab-doctor` to verify the installation.\n'
 fi

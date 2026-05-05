@@ -2,30 +2,22 @@
 set -euo pipefail
 
 LAB_HOME="${LAB_HOME:-$HOME/lab}"
-MB="${1:-${LAB_UVM_MB:-512}}"
-PATTERN="${LAB_UVM_PATTERN:-ls}"
-PASSES="${LAB_UVM_PASSES:-2}"
+ROWS="${1:-${LAB_GCN_ROWS:-65536}}"
+DEGREE="${2:-${LAB_GCN_DEGREE:-16}}"
+FEATURE_DIM="${3:-${LAB_GCN_FEATURE_DIM:-16}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="$SCRIPT_DIR/../config/cuda-uvm-access.cu"
+SRC="$SCRIPT_DIR/../config/cuda-memory-kernels.cu"
 if [ ! -f "$SRC" ]; then
-  SRC="$HOME/.config/lab/cuda-uvm-access.cu"
+  SRC="$HOME/.config/lab/cuda-memory-kernels.cu"
 fi
 BUILD_DIR="$LAB_HOME/_benchmarks/cuda"
-BIN="$BUILD_DIR/cuda-uvm-access"
-OUT="$BUILD_DIR/cuda-uvm-${PATTERN}-${MB}mb-$(date +%Y%m%d-%H%M%S).txt"
+BIN="$BUILD_DIR/cuda-memory-kernels"
+OUT="$BUILD_DIR/cuda-gcn-${ROWS}x${DEGREE}x${FEATURE_DIM}-$(date +%Y%m%d-%H%M%S).txt"
 
 if ! command -v nvcc >/dev/null 2>&1; then
   printf 'nvcc not available — install CUDA toolkit or run inside lab-cuda container.\n' >&2
   exit 127
 fi
-
-case "$PATTERN" in
-  ls|hchi|hcli|lc) ;;
-  *)
-    printf 'Unsupported LAB_UVM_PATTERN=%s (expected: ls, hchi, hcli, lc)\n' "$PATTERN" >&2
-    exit 2
-    ;;
-esac
 
 mkdir -p "$BUILD_DIR"
 if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
@@ -34,5 +26,5 @@ if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
 else
   printf 'Build: reused %s\n' "$BIN"
 fi
-"$BIN" "$MB" "$PATTERN" "$PASSES" | tee "$OUT"
+"$BIN" gcn "$ROWS" "$DEGREE" "$FEATURE_DIM" | tee "$OUT"
 printf '\nSaved: %s\n' "$OUT"

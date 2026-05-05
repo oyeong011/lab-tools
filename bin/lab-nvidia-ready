@@ -13,7 +13,7 @@ check_cmd() {
 }
 
 printf '== NVIDIA Lab Readiness ==\n'
-printf 'time=%s\n\n' "$(date --iso-8601=seconds)"
+printf 'time=%s\n\n' "$(date -Iseconds)"
 
 check_cmd nvidia-smi
 check_cmd nvcc

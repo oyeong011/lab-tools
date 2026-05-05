@@ -2,10 +2,13 @@ experiment: memory-kernels
 warmups: 1
 repeats: 5
 env:
-  LAB_WORKLOADS: cuda-gemv,cuda-spmv
+  LAB_WORKLOADS: cuda-gemv,cuda-spmv,cuda-gcn
   LAB_MONITOR_INTERVAL: 1
   LAB_MAX_TEMP_C: 85
   LAB_TIMEOUT: 20m
   LAB_GEMV_SIZE: 4096
   LAB_SPMV_ROWS: 1048576
   LAB_SPMV_NNZ_PER_ROW: 16
+  LAB_GCN_ROWS: 65536
+  LAB_GCN_DEGREE: 16
+  LAB_GCN_FEATURE_DIM: 16

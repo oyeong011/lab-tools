@@ -8,7 +8,8 @@ WARMUPS="${LAB_WARMUPS:-0}"
 SHUFFLE="${LAB_SHUFFLE:-1}"
 SHUFFLE_SEED="${LAB_SHUFFLE_SEED:-$(date +%s)}"
 SUITE_DIR="$LAB_HOME/$EXPERIMENT/suites/$(date +%Y%m%d-%H%M%S-%N)-$$"
-PATH="$HOME/bin:$PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 
 case "$EXPERIMENT" in
   *[!A-Za-z0-9._-]*|'')
@@ -28,6 +29,7 @@ declare -A WORKLOAD_CMD=(
   [cuda-uvm]=bench-cuda-uvm-access
   [cuda-gemv]=bench-cuda-gemv
   [cuda-spmv]=bench-cuda-spmv
+  [cuda-gcn]=bench-cuda-gcn
 )
 declare -A WORKLOAD_LABEL=(
   [cpu]="CPU"
@@ -39,6 +41,7 @@ declare -A WORKLOAD_LABEL=(
   [cuda-uvm]="CUDA UVM access-pattern"
   [cuda-gemv]="CUDA GEMV"
   [cuda-spmv]="CUDA SpMV"
+  [cuda-gcn]="CUDA synthetic GCN neighbor aggregation"
 )
 
 PROFILE="$(lab-profile 2>/dev/null || printf cpu)"
@@ -81,7 +84,7 @@ pinned_state="$(lab-pin-system check 2>/dev/null && printf yes || printf no)"
   printf -- '- Profile: `%s`\n' "$PROFILE"
   printf -- '- Workloads: `%s`\n' "${WORKLOADS[*]}"
   printf -- '- System pinned: `%s`\n' "$pinned_state"
-  printf -- '- Started: `%s`\n' "$(date --iso-8601=seconds)"
+  printf -- '- Started: `%s`\n' "$(date -Iseconds)"
 } > "$SUITE_DIR/summary.md"
 
 hw-report > "$SUITE_DIR/hardware-report-path.txt"
@@ -143,7 +146,7 @@ render-suite-report "$SUITE_DIR" > "$SUITE_DIR/report-path.txt"
 render-method-section "$SUITE_DIR" > "$SUITE_DIR/method-md-path.txt" 2>/dev/null || true
 render-repro-checklist "$SUITE_DIR" > "$SUITE_DIR/repro-md-path.txt" 2>/dev/null || true
 {
-  printf -- '- Finished: `%s`\n' "$(date --iso-8601=seconds)"
+  printf -- '- Finished: `%s`\n' "$(date -Iseconds)"
   printf -- '- CSV: `%s`\n' "$SUITE_DIR/summary.csv"
   printf -- '- Stats: `%s`\n' "$SUITE_DIR/stats.csv"
   printf -- '- Report: `%s`\n' "$SUITE_DIR/report.md"

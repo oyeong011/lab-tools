@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-printf 'timestamp=%s\n' "$(date --iso-8601=seconds)"
+printf 'timestamp=%s\n' "$(date -Iseconds)"
 printf '\n== sensors ==\n'
 if command -v sensors >/dev/null 2>&1; then
   sensors || true

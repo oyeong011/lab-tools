@@ -3,7 +3,11 @@ set -euo pipefail
 
 LAB_HOME="${LAB_HOME:-$HOME/lab}"
 N="${1:-${LAB_CUDA_VECTOR_N:-16777216}}"
-SRC="$HOME/.config/lab/cuda-vector-add.cu"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC="$SCRIPT_DIR/../config/cuda-vector-add.cu"
+if [ ! -f "$SRC" ]; then
+  SRC="$HOME/.config/lab/cuda-vector-add.cu"
+fi
 BUILD_DIR="$LAB_HOME/_benchmarks/cuda"
 BIN="$BUILD_DIR/cuda-vector-add"
 OUT="$BUILD_DIR/cuda-vector-add-${N}-$(date +%Y%m%d-%H%M%S).txt"

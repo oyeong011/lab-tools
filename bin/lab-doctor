@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PATH="$HOME/bin:$PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 
 ok=0
 warn=0
@@ -34,7 +35,7 @@ check_file() {
 PROFILE="$(lab-profile 2>/dev/null || printf cpu)"
 
 printf '== Lab Doctor ==\n'
-printf 'time=%s\n' "$(date --iso-8601=seconds)"
+printf 'time=%s\n' "$(date -Iseconds)"
 printf 'host=%s\n' "$(hostname)"
 printf 'profile=%s\n\n' "$PROFILE"
 
@@ -83,15 +84,15 @@ fi
 printf '\n== CUDA toolchain ==\n'
 case "$PROFILE" in
   cuda)
-    for cmd in nvidia-smi nvcc nsys nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv lab-rtx-smoke lab-uvm-profile; do
+    for cmd in nvidia-smi nvcc nsys nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv bench-cuda-gcn lab-rtx-smoke lab-uvm-profile; do
       check_cmd "$cmd"
     done
     ;;
   *)
-    for cmd in nvidia-smi nvcc nsys nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv lab-rtx-smoke lab-uvm-profile; do
+    for cmd in nvidia-smi nvcc nsys nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv bench-cuda-gcn lab-rtx-smoke lab-uvm-profile; do
       info_cmd "$cmd"
     done
-    printf 'note     profile=cpu — CUDA tools optional on this host\n'
+    printf 'note     profile=%s — CUDA tools optional on this host\n' "$PROFILE"
     ;;
 esac
 
@@ -116,6 +117,7 @@ fi
 if [ "$(uname -s)" = Darwin ]; then
   printf '\n== Apple profile files ==\n'
   check_cmd bench-apple-metal
+  check_cmd bench-apple-mps
   check_file "$HOME/.config/lab/apple-metal-vector.swift"
 fi
 

@@ -1,5 +1,7 @@
 #include <cuda_runtime.h>
 
+#include <cerrno>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -39,6 +41,20 @@ __global__ void spmv_csr_kernel(const int *row_ptr, const int *col_idx,
   y[row] = sum;
 }
 
+__global__ void gcn_agg_kernel(const int *row_ptr, const int *col_idx,
+                               const float *features, float *out,
+                               int rows, int feature_dim) {
+  int row = blockIdx.x;
+  int feat = threadIdx.x;
+  if (row >= rows || feat >= feature_dim) return;
+  float sum = 0.0f;
+  for (int p = row_ptr[row]; p < row_ptr[row + 1]; ++p) {
+    int src = col_idx[p];
+    sum += features[static_cast<size_t>(src) * feature_dim + feat];
+  }
+  out[static_cast<size_t>(row) * feature_dim + feat] = sum;
+}
+
 static float gemv_value(int row, int col) {
   return static_cast<float>(((row * 17 + col * 13) & 0xff) + 1) * 0.0001f;
 }
@@ -51,7 +67,45 @@ static void usage() {
   std::fprintf(stderr,
                "Usage:\n"
                "  cuda-memory-kernels gemv N\n"
-               "  cuda-memory-kernels spmv ROWS NNZ_PER_ROW\n");
+               "  cuda-memory-kernels spmv ROWS NNZ_PER_ROW\n"
+               "  cuda-memory-kernels gcn ROWS DEGREE FEATURE_DIM\n");
+}
+
+static bool parse_positive_int(const char *text, int *out) {
+  char *end = nullptr;
+  errno = 0;
+  long value = std::strtol(text, &end, 10);
+  if (errno != 0 || end == text || *end != '\0' || value <= 0 ||
+      value > INT_MAX) {
+    return false;
+  }
+  *out = static_cast<int>(value);
+  return true;
+}
+
+static bool product_fits_int(int a, int b) {
+  return static_cast<unsigned long long>(a) *
+             static_cast<unsigned long long>(b) <=
+         static_cast<unsigned long long>(INT_MAX);
+}
+
+static int check_device_memory(size_t required_bytes) {
+  size_t free_bytes = 0;
+  size_t total_bytes = 0;
+  cudaError_t err = cudaMemGetInfo(&free_bytes, &total_bytes);
+  if (err != cudaSuccess) {
+    std::fprintf(stderr, "CUDA error cudaMemGetInfo: %s\n",
+                 cudaGetErrorString(err));
+    return 1;
+  }
+  if (required_bytes > (free_bytes * 9) / 10) {
+    std::fprintf(stderr,
+                 "Requested device allocation is too large: need %zu bytes, "
+                 "free %zu bytes.\n",
+                 required_bytes, free_bytes);
+    return 2;
+  }
+  return 0;
 }
 
 int main(int argc, char **argv) {
@@ -61,7 +115,8 @@ int main(int argc, char **argv) {
   }
   const bool is_gemv = std::strcmp(argv[1], "gemv") == 0;
   const bool is_spmv = std::strcmp(argv[1], "spmv") == 0;
-  if (!is_gemv && !is_spmv) {
+  const bool is_gcn = std::strcmp(argv[1], "gcn") == 0;
+  if (!is_gemv && !is_spmv && !is_gcn) {
     usage();
     return 2;
   }
@@ -82,12 +137,17 @@ int main(int argc, char **argv) {
   double gbps = 0.0;
 
   if (is_gemv) {
-    const int n = std::atoi(argv[2]);
-    if (n <= 0) {
+    int n = 0;
+    if (!parse_positive_int(argv[2], &n)) {
       usage();
       return 2;
     }
     const size_t matrix_elems = static_cast<size_t>(n) * n;
+    const size_t device_bytes =
+        (matrix_elems + static_cast<size_t>(n) + static_cast<size_t>(n)) *
+        sizeof(float);
+    int mem_status = check_device_memory(device_bytes);
+    if (mem_status != 0) return mem_status;
     std::vector<float> h_a(matrix_elems);
     std::vector<float> h_x(n, 1.0f);
     std::vector<float> h_y(n, 0.0f);
@@ -134,15 +194,26 @@ int main(int argc, char **argv) {
     std::printf("Kernel: cuda-gemv\n");
     std::printf("Rows: %d\n", n);
     std::printf("Cols: %d\n", n);
-  } else {
-    const int rows = std::atoi(argv[2]);
-    const int nnz_per_row = argc > 3 ? std::atoi(argv[3]) : 16;
-    if (rows <= 0 || nnz_per_row <= 0) {
+  } else if (is_spmv) {
+    int rows = 0;
+    int nnz_per_row = 16;
+    if (!parse_positive_int(argv[2], &rows) ||
+        (argc > 3 && !parse_positive_int(argv[3], &nnz_per_row))) {
       usage();
+      return 2;
+    }
+    if (!product_fits_int(rows, nnz_per_row)) {
+      std::fprintf(stderr, "ROWS * NNZ_PER_ROW exceeds CSR int offset range.\n");
       return 2;
     }
     const int cols = rows;
     const size_t nnz = static_cast<size_t>(rows) * nnz_per_row;
+    const size_t device_bytes =
+        static_cast<size_t>(rows + 1) * sizeof(int) + nnz * sizeof(int) +
+        nnz * sizeof(float) + static_cast<size_t>(cols) * sizeof(float) +
+        static_cast<size_t>(rows) * sizeof(float);
+    int mem_status = check_device_memory(device_bytes);
+    if (mem_status != 0) return mem_status;
     std::vector<int> h_row_ptr(rows + 1);
     std::vector<int> h_col_idx(nnz);
     std::vector<float> h_values(nnz);
@@ -209,6 +280,111 @@ int main(int argc, char **argv) {
     std::printf("Cols: %d\n", cols);
     std::printf("NNZ per row: %d\n", nnz_per_row);
     std::printf("NNZ: %zu\n", nnz);
+  } else {
+    int rows = 0;
+    int degree = 16;
+    int feature_dim = 16;
+    if (!parse_positive_int(argv[2], &rows) ||
+        (argc > 3 && !parse_positive_int(argv[3], &degree)) ||
+        (argc > 4 && !parse_positive_int(argv[4], &feature_dim))) {
+      usage();
+      return 2;
+    }
+    if (feature_dim > prop.maxThreadsPerBlock) {
+      std::fprintf(stderr,
+                   "FEATURE_DIM exceeds maxThreadsPerBlock on this device.\n");
+      return 2;
+    }
+    if (rows > prop.maxGridSize[0]) {
+      std::fprintf(stderr, "ROWS exceeds max grid x dimension on this device.\n");
+      return 2;
+    }
+    if (!product_fits_int(rows, degree)) {
+      std::fprintf(stderr, "ROWS * DEGREE exceeds CSR int offset range.\n");
+      return 2;
+    }
+    const size_t edges = static_cast<size_t>(rows) * degree;
+    const size_t feature_elems = static_cast<size_t>(rows) * feature_dim;
+    const size_t device_bytes =
+        static_cast<size_t>(rows + 1) * sizeof(int) + edges * sizeof(int) +
+        feature_elems * sizeof(float) + feature_elems * sizeof(float);
+    int mem_status = check_device_memory(device_bytes);
+    if (mem_status != 0) return mem_status;
+    std::vector<int> h_row_ptr(rows + 1);
+    std::vector<int> h_col_idx(edges);
+    std::vector<float> h_features(feature_elems);
+    std::vector<float> h_out(feature_elems, 0.0f);
+    for (int r = 0; r <= rows; ++r) h_row_ptr[r] = r * degree;
+    for (int r = 0; r < rows; ++r) {
+      for (int k = 0; k < degree; ++k) {
+        size_t p = static_cast<size_t>(r) * degree + k;
+        h_col_idx[p] = static_cast<int>(
+            (static_cast<unsigned long long>(r) * 1103515245ULL +
+             static_cast<unsigned long long>(k) * 12345ULL) %
+            static_cast<unsigned long long>(rows));
+      }
+      for (int f = 0; f < feature_dim; ++f) {
+        h_features[static_cast<size_t>(r) * feature_dim + f] =
+            static_cast<float>(((r * 19 + f * 23) & 0xff) + 1) * 0.001f;
+      }
+    }
+
+    int *d_row_ptr = nullptr;
+    int *d_col_idx = nullptr;
+    float *d_features = nullptr;
+    float *d_out = nullptr;
+    CHECK_CUDA(cudaMalloc(&d_row_ptr, static_cast<size_t>(rows + 1) * sizeof(int)));
+    CHECK_CUDA(cudaMalloc(&d_col_idx, edges * sizeof(int)));
+    CHECK_CUDA(cudaMalloc(&d_features, feature_elems * sizeof(float)));
+    CHECK_CUDA(cudaMalloc(&d_out, feature_elems * sizeof(float)));
+    CHECK_CUDA(cudaMemcpy(d_row_ptr, h_row_ptr.data(), static_cast<size_t>(rows + 1) * sizeof(int), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_col_idx, h_col_idx.data(), edges * sizeof(int), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_features, h_features.data(), feature_elems * sizeof(float), cudaMemcpyHostToDevice));
+
+    const dim3 grid(rows);
+    const dim3 threads(feature_dim);
+    CHECK_CUDA(cudaEventRecord(start));
+    gcn_agg_kernel<<<grid, threads>>>(d_row_ptr, d_col_idx, d_features, d_out, rows, feature_dim);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventSynchronize(stop));
+    float ms = 0.0f;
+    CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
+    seconds = ms / 1000.0;
+    CHECK_CUDA(cudaMemcpy(h_out.data(), d_out, feature_elems * sizeof(float), cudaMemcpyDeviceToHost));
+
+    const int sample_rows = rows < 64 ? rows : 64;
+    const int sample_feats = feature_dim < 32 ? feature_dim : 32;
+    for (int sr = 0; sr < sample_rows; ++sr) {
+      int r = static_cast<int>((static_cast<long long>(sr) * 9973LL) % rows);
+      for (int sf = 0; sf < sample_feats; ++sf) {
+        int f = static_cast<int>((static_cast<long long>(sf) * 37LL) %
+                                 feature_dim);
+        float ref = 0.0f;
+        for (int k = 0; k < degree; ++k) {
+          int src = h_col_idx[static_cast<size_t>(r) * degree + k];
+          ref += h_features[static_cast<size_t>(src) * feature_dim + f];
+        }
+        float got = h_out[static_cast<size_t>(r) * feature_dim + f];
+        max_error = fmaxf(max_error, fabsf(ref - got));
+      }
+    }
+    const double ops = static_cast<double>(edges) * static_cast<double>(feature_dim);
+    const double bytes = static_cast<double>(edges) * sizeof(int) +
+                         static_cast<double>(edges) * static_cast<double>(feature_dim) * sizeof(float) +
+                         static_cast<double>(feature_elems) * sizeof(float);
+    gflops = ops / seconds / 1.0e9;
+    gbps = bytes / seconds / 1.0e9;
+
+    CHECK_CUDA(cudaFree(d_row_ptr));
+    CHECK_CUDA(cudaFree(d_col_idx));
+    CHECK_CUDA(cudaFree(d_features));
+    CHECK_CUDA(cudaFree(d_out));
+    std::printf("Kernel: cuda-gcn-agg\n");
+    std::printf("Rows: %d\n", rows);
+    std::printf("Degree: %d\n", degree);
+    std::printf("Feature dim: %d\n", feature_dim);
+    std::printf("Edges: %zu\n", edges);
   }
 
   std::printf("Device: %s\n", prop.name);

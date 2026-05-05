@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'EOF'
@@ -21,4 +22,4 @@ if [ $# -lt 3 ] || [ "${2:-}" != "--" ]; then
   exit 2
 fi
 
-exec "$HOME/bin/lab-safe-run" "$@"
+exec "$SCRIPT_DIR/lab-safe-run" "$@"

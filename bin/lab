@@ -30,7 +30,9 @@ ensure_lab_home() {
 
 list_labs() {
   ensure_lab_home
-  find "$LAB_HOME" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+  find "$LAB_HOME" -mindepth 1 -maxdepth 1 -type d \
+    | while IFS= read -r dir; do basename "$dir"; done \
+    | sort
 }
 
 new_lab() {

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PATH="$HOME/bin:$PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 
 BACKUP_ROOT="${1:-$HOME/backups/lab}"
 STAMP="$(date +%Y%m%d-%H%M%S)"

@@ -78,6 +78,7 @@ environments:
       - bash bin/lab-tools-install
       - lab-apple-smoke
       - LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
+      - LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run --run-mps
     required_tools:
       - clang
       - Metal or MPS workload path
@@ -201,10 +202,21 @@ tracks:
     workloads:
       - cuda-gemv
       - cuda-spmv
+      - cuda-gcn
       - sparse-dense matrix multiplication
       - address-mapping sweep
       - row activation counting trace
     suite: memory-kernels
+    workload_tunables:
+      cuda-gemv:
+        - LAB_GEMV_SIZE
+      cuda-spmv:
+        - LAB_SPMV_ROWS
+        - LAB_SPMV_NNZ_PER_ROW
+      cuda-gcn:
+        - LAB_GCN_ROWS
+        - LAB_GCN_DEGREE
+        - LAB_GCN_FEATURE_DIM
     tunables:
       LAB_GEMV_SIZE:
         values: [1024, 2048, 4096]
@@ -215,6 +227,15 @@ tracks:
       LAB_SPMV_NNZ_PER_ROW:
         values: [8, 16, 32]
         meaning: Fixed nonzeros per row for synthetic CSR SpMV.
+      LAB_GCN_ROWS:
+        values: [16384, 65536, 262144]
+        meaning: Synthetic GCN aggregation row count.
+      LAB_GCN_DEGREE:
+        values: [8, 16, 32]
+        meaning: Fixed graph degree for synthetic GCN aggregation.
+      LAB_GCN_FEATURE_DIM:
+        values: [16, 32]
+        meaning: Feature dimension for synthetic GCN aggregation.
     metrics:
       lower_is_better:
         - row_buffer_miss_rate
@@ -225,7 +246,7 @@ tracks:
         - effective_bandwidth
         - ops_per_joule
     reviewer_guardrails:
-      - The wired path covers CUDA GEMV/SpMV microbenchmarks only.
+      - The wired path covers CUDA GEMV, SpMV, and synthetic GCN neighbor-aggregation microbenchmarks only.
       - Tie every mapping claim to a visible address mapping or trace.
       - Do not infer DRAM row-buffer behavior from wall time alone.
 

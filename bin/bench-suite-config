@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PATH="$HOME/bin:$PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 
 DRY_RUN=0
 CONFIG_NAME="quick"
@@ -39,7 +40,11 @@ fi
 if [ ! -f "$CONFIG_PATH" ]; then
   printf 'Suite config not found: %s\n' "$CONFIG_NAME" >&2
   printf 'Available configs:\n' >&2
-  find "$HOME/.config/lab/suites" -maxdepth 1 -type f \( -name '*.env' -o -name '*.yaml' \) -printf '  %f\n' | sort >&2
+  if [ -d "$HOME/.config/lab/suites" ]; then
+    find "$HOME/.config/lab/suites" -maxdepth 1 -type f \( -name '*.env' -o -name '*.yaml' \) \
+      | while IFS= read -r file; do printf '  %s\n' "$(basename "$file")"; done \
+      | sort >&2
+  fi
   exit 2
 fi
 
@@ -94,6 +99,9 @@ allowed = {
     "LAB_GEMV_SIZE",
     "LAB_SPMV_ROWS",
     "LAB_SPMV_NNZ_PER_ROW",
+    "LAB_GCN_ROWS",
+    "LAB_GCN_DEGREE",
+    "LAB_GCN_FEATURE_DIM",
     "LAB_APPLE_ELEMENTS",
     "OPENBLAS_NUM_THREADS",
     "OMP_NUM_THREADS",

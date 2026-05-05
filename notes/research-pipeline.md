@@ -11,7 +11,7 @@ the lab's broader CPU, GPU, memory, accelerator, and systems publication space.
 | Ubuntu + Intel CPU/iGPU | wired | `cpu` | CPU, OpenCL, RAPL, report/statistics pipeline |
 | Ubuntu + RTX 5060 8GB | wired | `cuda` | CUDA baseline and managed-memory probe; Blackwell container is CUDA 13.1 based |
 | Ubuntu + RTX 5080 16GB | wired | `cuda` | Same CUDA path; larger UVM sweeps are practical |
-| MacBook M1/M4 | smoke | `apple` | `lab-apple-smoke` runs a Metal vector-add smoke benchmark; package energy collection still needs powermetrics integration |
+| MacBook M1/M4 | smoke | `apple` | `lab-apple-smoke` runs Metal vector-add and can attempt optional PyTorch MPS vector-add; package energy collection still needs powermetrics integration |
 | Multi-node GPU cluster | planned | `cluster` | Needs NCCL tests, topology capture, rail binding, and launch integration |
 
 ## Wired Experiments
@@ -57,11 +57,12 @@ lab-uvm-profile --pattern hchi --mb 12288 --passes 2
 
 The generated report and CSV summaries are stored under `~/lab/_profiles`.
 
-### CUDA GEMV/SpMV Memory Kernels
+### CUDA GEMV/SpMV/GCN Memory Kernels
 
-`bench-cuda-gemv` and `bench-cuda-spmv` provide the first wired path for
-bandwidth-dominated matrix-vector kernels. They are still microbenchmarks, but
-they are closer to PIM/GEMV/SpMV papers than the original GEMM-only suite.
+`bench-cuda-gemv`, `bench-cuda-spmv`, and `bench-cuda-gcn` provide the first
+wired path for bandwidth-dominated matrix-vector and synthetic graph neighbor
+aggregation kernels. They are still microbenchmarks, but they are closer to
+PIM/GEMV/SpMV/GCN papers than the original GEMM-only suite.
 
 ```bash
 bench-suite-config memory-kernels
@@ -76,6 +77,7 @@ This is a smoke path, not yet a full peer to the Linux `bench-suite` flow.
 ```bash
 lab-apple-smoke
 LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
+LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run --run-mps
 ```
 
 ## Publication Coverage Map

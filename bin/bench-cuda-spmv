@@ -4,7 +4,11 @@ set -euo pipefail
 LAB_HOME="${LAB_HOME:-$HOME/lab}"
 ROWS="${1:-${LAB_SPMV_ROWS:-1048576}}"
 NNZ_PER_ROW="${2:-${LAB_SPMV_NNZ_PER_ROW:-16}}"
-SRC="$HOME/.config/lab/cuda-memory-kernels.cu"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC="$SCRIPT_DIR/../config/cuda-memory-kernels.cu"
+if [ ! -f "$SRC" ]; then
+  SRC="$HOME/.config/lab/cuda-memory-kernels.cu"
+fi
 BUILD_DIR="$LAB_HOME/_benchmarks/cuda"
 BIN="$BUILD_DIR/cuda-memory-kernels"
 OUT="$BUILD_DIR/cuda-spmv-${ROWS}x${NNZ_PER_ROW}-$(date +%Y%m%d-%H%M%S).txt"

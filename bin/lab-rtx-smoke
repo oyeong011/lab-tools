@@ -14,7 +14,7 @@ Usage:
 Checks an Ubuntu NVIDIA host for lab-tools CUDA readiness. By default it does
 not run benchmark suites; it verifies tools, profile detection, dry-run config
 resolution, and CUDA source availability. With --run, it executes one small
-managed-memory UVM probe and one GEMV/SpMV pass.
+managed-memory UVM probe plus GEMV/SpMV/GCN passes.
 
 Environment:
   LAB_RTX_SMOKE_UVM_MB=512   Managed-memory size for --run UVM smoke
@@ -44,7 +44,7 @@ need_cmd() {
 
 failures=0
 section "Commands"
-for cmd in nvidia-smi nvcc python3 lab-profile lab-doctor bench-suite-config bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv; do
+for cmd in nvidia-smi nvcc python3 lab-profile lab-doctor bench-suite-config bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv bench-cuda-gcn; do
   need_cmd "$cmd" || failures=$((failures + 1))
 done
 
@@ -66,7 +66,7 @@ fi
 
 section "Suite dry-runs"
 bench-suite-config --dry-run forest-uvm.yaml || failures=$((failures + 1))
-LAB_WORKLOADS=cuda-gemv,cuda-spmv LAB_GEMV_SIZE=1024 LAB_SPMV_ROWS=65536 LAB_SPMV_NNZ_PER_ROW=16 \
+LAB_WORKLOADS=cuda-gemv,cuda-spmv,cuda-gcn LAB_GEMV_SIZE=1024 LAB_SPMV_ROWS=65536 LAB_SPMV_NNZ_PER_ROW=16 LAB_GCN_ROWS=16384 LAB_GCN_DEGREE=16 LAB_GCN_FEATURE_DIM=16 \
   bench-suite-config --dry-run memory-kernels.yaml || failures=$((failures + 1))
 
 if [ "$RUN" -eq 1 ]; then
@@ -74,6 +74,7 @@ if [ "$RUN" -eq 1 ]; then
   LAB_UVM_MB="$PROFILE_SIZE_MB" LAB_UVM_PATTERN=ls LAB_UVM_PASSES=1 bench-cuda-uvm-access || failures=$((failures + 1))
   LAB_GEMV_SIZE=1024 bench-cuda-gemv || failures=$((failures + 1))
   LAB_SPMV_ROWS=65536 LAB_SPMV_NNZ_PER_ROW=16 bench-cuda-spmv || failures=$((failures + 1))
+  LAB_GCN_ROWS=16384 LAB_GCN_DEGREE=16 LAB_GCN_FEATURE_DIM=16 bench-cuda-gcn || failures=$((failures + 1))
 else
   printf '\nDry smoke only. Re-run with --run to execute CUDA probes.\n'
 fi

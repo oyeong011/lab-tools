@@ -8,7 +8,16 @@ TARGET="${1:-latest}"
 mkdir -p "$ARCHIVE_DIR"
 
 if [ "$TARGET" = "latest" ]; then
-  SUITE_DIR="$(find "$LAB_HOME" -path '*/suites/*/summary.csv' -printf '%T@ %h\n' | sort -n | tail -n 1 | cut -d' ' -f2-)"
+  SUITE_DIR="$(python3 - "$LAB_HOME" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+matches = [p for p in root.glob("*/suites/*/summary.csv") if p.is_file()]
+if matches:
+    print(max(matches, key=lambda p: p.stat().st_mtime).parent)
+PY
+)"
 else
   SUITE_DIR="$TARGET"
 fi

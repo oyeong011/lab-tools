@@ -2,22 +2,25 @@
 set -euo pipefail
 
 RUN=0
+RUN_MPS=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
 
 usage() {
   cat <<'EOF'
 Usage:
-  lab-apple-smoke [--run]
+  lab-apple-smoke [--run] [--run-mps]
 
 Checks an Apple Silicon Mac for the first-stage Apple profile. With --run, it
-executes the Metal vector-add smoke benchmark.
+executes the Metal vector-add smoke benchmark. With --run-mps, it also attempts
+the optional PyTorch MPS vector-add smoke benchmark.
 EOF
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --run) RUN=1; shift ;;
+    --run-mps) RUN_MPS=1; shift ;;
     -h|--help|help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
   esac
@@ -34,7 +37,7 @@ sysctl -n machdep.cpu.brand_string 2>/dev/null || true
 system_profiler SPDisplaysDataType 2>/dev/null | sed -n '1,80p' || true
 
 section "Commands"
-for cmd in swift xcrun bench-apple-metal; do
+for cmd in swift xcrun bench-apple-metal bench-apple-mps; do
   if command -v "$cmd" >/dev/null 2>&1; then
     printf 'ok   %-18s %s\n' "$cmd" "$(command -v "$cmd")"
   else
@@ -53,6 +56,21 @@ if [ "$RUN" -eq 1 ]; then
   LAB_APPLE_ELEMENTS="${LAB_APPLE_ELEMENTS:-1048576}" bench-apple-metal || failures=$((failures + 1))
 else
   printf '\nDry smoke only. Re-run with --run to execute Metal vector add.\n'
+fi
+
+if [ "$RUN_MPS" -eq 1 ]; then
+  section "MPS benchmark"
+  set +e
+  LAB_APPLE_ELEMENTS="${LAB_APPLE_ELEMENTS:-1048576}" bench-apple-mps
+  rc=$?
+  set -e
+  if [ "$rc" -eq 127 ]; then
+    printf 'info MPS benchmark skipped; install PyTorch with MPS support to enable it.\n'
+  elif [ "$rc" -ne 0 ]; then
+    failures=$((failures + 1))
+  fi
+else
+  printf 'Re-run with --run-mps to attempt optional PyTorch MPS vector add.\n'
 fi
 
 if [ "$failures" -ne 0 ]; then

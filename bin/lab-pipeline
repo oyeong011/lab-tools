@@ -19,8 +19,8 @@ except ImportError as exc:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MATRIX_PATHS = [
     Path(os.environ.get("LAB_PIPELINE_MATRIX", "")) if os.environ.get("LAB_PIPELINE_MATRIX") else None,
-    Path.home() / ".config" / "lab" / "pipelines" / "research-matrix.yaml",
     REPO_ROOT / "config" / "pipelines" / "research-matrix.yaml",
+    Path.home() / ".config" / "lab" / "pipelines" / "research-matrix.yaml",
 ]
 
 
@@ -68,10 +68,39 @@ def workload_env(track, profile):
     return {"LAB_WORKLOADS": ",".join(runnable)}
 
 
-def expand_tunables(track, sweep):
+def expand_tunables(track, sweep, profile=None):
     tunables = track.get("tunables") or {}
     if not tunables:
         return [({}, "default")]
+
+    workload_scopes = track.get("workload_tunables") or {}
+    if workload_scopes:
+        combos = []
+        known_prefixes = ("cpu", "standard-cpu", "opencl", "cuda", "apple")
+        for workload, scoped_keys in workload_scopes.items():
+            if profile and not known_workload_supported(workload, profile):
+                continue
+            if not isinstance(workload, str) or not workload.startswith(known_prefixes):
+                continue
+            keys = [key for key in scoped_keys if key in tunables]
+            if not keys:
+                combos.append(({"LAB_WORKLOADS": workload}, slugify(workload)))
+                continue
+            values = []
+            for key in keys:
+                raw = tunables[key].get("values", [])
+                if not raw:
+                    raw = [""]
+                values.append(raw if sweep else raw[:1])
+            for combo in itertools.product(*values):
+                env = {"LAB_WORKLOADS": workload}
+                env.update({key: str(value) for key, value in zip(keys, combo)})
+                suffix = "-".join(
+                    [slugify(workload)] +
+                    [f"{slugify(k.replace('LAB_', '').lower())}-{slugify(str(v))}" for k, v in zip(keys, combo)]
+                )
+                combos.append((env, suffix or slugify(workload)))
+        return combos or [({}, "default")]
 
     keys = list(tunables)
     values = []
@@ -184,7 +213,7 @@ def cmd_plan(args):
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = Path(args.out) if args.out else Path.home() / "lab" / "_plans" / f"{slugify(args.track)}-{timestamp}"
 
-    combos = expand_tunables(track, args.sweep)
+    combos = expand_tunables(track, args.sweep, profile)
     print(f"matrix: {matrix_path}")
     print(f"track: {args.track}")
     print(f"profile: {profile}")
@@ -214,6 +243,7 @@ def cmd_plan(args):
         "",
         "```bash",
         "bash bin/lab-tools-install",
+        "export PATH=\"$HOME/bin:$PATH\"",
         "lab-doctor",
         "sudo lab-pin-system enable-rapl   # Intel hosts, once per boot",
         "sudo lab-pin-system pin",

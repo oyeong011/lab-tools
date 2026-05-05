@@ -35,6 +35,7 @@ METRICS = [
     "cuda_gemm_gflops",
     "cuda_gemv_gflops",
     "cuda_spmv_gflops",
+    "cuda_gcn_gflops",
     "duration_s",
     "pkg_energy_j",
     "core_energy_j",

@@ -136,6 +136,18 @@ for log in "$suite_dir"/cuda-spmv-run-*.log; do
   printf 'cuda-spmv,%s,%s,,,,,,,,,,%s,%s,%s,%s,%s\n' "$run" "$status" "$kernel" "$bandwidth" "$gflops" "$max_error" "$run_dir" >> "$csv"
 done
 
+for log in "$suite_dir"/cuda-gcn-run-*.log; do
+  [ -e "$log" ] || continue
+  run="$(basename "$log" | sed -E 's/cuda-gcn-run-([0-9]+)\.log/\1/')"
+  status="$(status_for "$log")"
+  kernel="$(sed -n 's/^Kernel time: \([0-9.]*\) s.*/\1/p' "$log" | tail -n 1)"
+  bandwidth="$(sed -n 's/^Device approx bandwidth: \([0-9.]*\) GB\/s.*/\1/p' "$log" | tail -n 1)"
+  gflops="$(sed -n 's/^Device approx GFLOP\/s: \([0-9.]*\).*/\1/p' "$log" | tail -n 1)"
+  max_error="$(sed -n 's/^Max error: \([^ ]*\).*/\1/p' "$log" | tail -n 1)"
+  run_dir="$(run_dir_for "$log")"
+  printf 'cuda-gcn,%s,%s,,,,,,,,,,%s,%s,%s,%s,%s\n' "$run" "$status" "$kernel" "$bandwidth" "$gflops" "$max_error" "$run_dir" >> "$csv"
+done
+
 python3 - "$csv" "$suite_dir" <<'PY'
 import csv, json, os, sys
 csv_path, suite_dir = sys.argv[1], sys.argv[2]
@@ -145,7 +157,7 @@ with open(csv_path, newline="") as f:
     rows = list(reader)
     base_fieldnames = list(reader.fieldnames or [])
 
-extra = ["cuda_gemv_gflops", "cuda_spmv_gflops", "duration_s", "pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j", "pkg_power_w", "nvidia_energy_j", "nvidia_avg_power_w", "gpu_max_temp_c", "phase", "thermal_event_count"]
+extra = ["cuda_gemv_gflops", "cuda_spmv_gflops", "cuda_gcn_gflops", "duration_s", "pkg_energy_j", "core_energy_j", "uncore_energy_j", "dram_energy_j", "pkg_power_w", "nvidia_energy_j", "nvidia_avg_power_w", "gpu_max_temp_c", "phase", "thermal_event_count"]
 fieldnames = list(rows[0].keys()) if rows else base_fieldnames
 for col in extra:
     if col not in fieldnames:
@@ -183,8 +195,13 @@ for row in rows:
     row["phase"] = phase_for(row.get("workload", ""), row.get("run", ""))
     if row.get("workload") == "cuda-gemv" and row.get("cuda_gemm_gflops"):
         row["cuda_gemv_gflops"] = row["cuda_gemm_gflops"]
+        row["cuda_gemm_gflops"] = ""
     if row.get("workload") == "cuda-spmv" and row.get("cuda_gemm_gflops"):
         row["cuda_spmv_gflops"] = row["cuda_gemm_gflops"]
+        row["cuda_gemm_gflops"] = ""
+    if row.get("workload") == "cuda-gcn" and row.get("cuda_gemm_gflops"):
+        row["cuda_gcn_gflops"] = row["cuda_gemm_gflops"]
+        row["cuda_gemm_gflops"] = ""
     if not rd:
         continue
     rj = os.path.join(rd, "result.json")

@@ -24,15 +24,18 @@ from pathlib import Path
 HOME = Path.home()
 LAB = HOME / "lab"
 HANDOFF_DIR = LAB / "_handoffs"
+TOOL_ROOT = Path(__file__).resolve().parents[1]
 
 BIN_FILES = [
     "bench-cpu", "bench-openblas", "bench-opencl", "bench-opencl-gemm",
     "bench-standard-cpu", "bench-stream", "bench-suite", "bench-suite-config",
     "bench-sysbench", "bench-cuda-vector-add", "bench-cuda-gemm", "bench-cuda-uvm-access",
-    "bench-cuda-gemv", "bench-cuda-spmv", "bench-apple-metal",
-    "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-doctor",
+    "bench-cuda-gemv", "bench-cuda-spmv", "bench-cuda-gcn", "bench-apple-metal", "bench-apple-mps",
+    "lab", "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-doctor",
+    "lab-tools-install", "lab-tools-sync", "lab-handoff", "lab-index", "lab-archive",
+    "lab-backup", "lab-plot", "lab-clean",
     "lab-container-build", "lab-container-run", "lab-pipeline", "lab-rtx-smoke", "lab-apple-smoke", "lab-uvm-profile", "lab-validate",
-    "render-suite-report", "render-method-section", "render-repro-checklist",
+    "render-suite-report", "render-suite-html", "render-method-section", "render-repro-checklist",
     "sensor-snapshot", "summarize-suite", "suite-stats", "suite-compare",
     "thermal-check", "ai-accel-check", "hw-report", "monitor-run",
     "nvml-check", "nvidia-check", "lab-nvidia-ready",
@@ -78,14 +81,22 @@ def write_readme(staging: Path, suite: Path, runs, manifest_excerpt):
         f.write("- `manifest-excerpt.json` — system snapshot for cross-host comparison\n\n")
         f.write("## Reproduction on a target host\n\n")
         f.write("```bash\n")
-        f.write("tar --zstd -xf <this-bundle>.tar.zst -C ~/lab-handoff/\n")
-        f.write("cd ~/lab-handoff/<bundle-name>\n")
+        f.write("bundle=\"${1:-<this-bundle>.tar.zst}\"\n")
+        f.write("mkdir -p ~/lab-handoff\n")
+        f.write("case \"$bundle\" in\n")
+        f.write("  *.tar.zst) root=\"$(tar --zstd -tf \"$bundle\" | head -n 1 | cut -d/ -f1)\"; tar --zstd -xf \"$bundle\" -C ~/lab-handoff ;;\n")
+        f.write("  *.tar.gz|*.tgz) root=\"$(tar -tzf \"$bundle\" | head -n 1 | cut -d/ -f1)\"; tar -xzf \"$bundle\" -C ~/lab-handoff ;;\n")
+        f.write("  *) root=\"$(tar -tf \"$bundle\" | head -n 1 | cut -d/ -f1)\"; tar -xf \"$bundle\" -C ~/lab-handoff ;;\n")
+        f.write("esac\n")
+        f.write("cd ~/lab-handoff/\"$root\"\n")
         f.write("# Install scripts\n")
-        f.write("install -Dm755 bin/* ~/bin/\n")
-        f.write("install -Dm644 -t ~/.config/lab/ config/lab/*.c config/lab/*.cu config/lab/*.swift\n")
-        f.write("install -Dm644 -t ~/.config/lab/suites/ config/lab/suites/* 2>/dev/null || true\n")
-        f.write("install -Dm644 -t ~/.config/lab/pipelines/ config/lab/pipelines/* 2>/dev/null || true\n")
-        f.write("install -Dm644 -t ~/.config/lab/containers/ config/lab/containers/* 2>/dev/null || true\n")
+        f.write("mkdir -p ~/bin ~/.config/lab/suites ~/.config/lab/pipelines ~/.config/lab/containers\n")
+        f.write("for f in bin/*; do install -m 755 \"$f\" ~/bin/; done\n")
+        f.write("for f in config/lab/*.c config/lab/*.cu config/lab/*.swift; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/; done\n")
+        f.write("for f in config/lab/suites/*; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/suites/; done\n")
+        f.write("for f in config/lab/pipelines/*; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/pipelines/; done\n")
+        f.write("for f in config/lab/containers/*; do [ -e \"$f\" ] && install -m 644 \"$f\" ~/.config/lab/containers/; done\n")
+        f.write("export PATH=\"$HOME/bin:$PATH\"\n")
         f.write("# Verify\n")
         f.write("lab-doctor\n")
         f.write("# Build container if podman available\n")
@@ -153,7 +164,9 @@ def stage(suite: Path, include_runs: bool, bundle_name: str):
     bin_stage = staging / "bin"
     bin_stage.mkdir()
     for name in BIN_FILES:
-        src = HOME / "bin" / name
+        src = TOOL_ROOT / "bin" / name
+        if not src.exists():
+            src = HOME / "bin" / name
         if src.exists():
             shutil.copy2(src, bin_stage / name)
             (bin_stage / name).chmod(0o755)
@@ -161,11 +174,15 @@ def stage(suite: Path, include_runs: bool, bundle_name: str):
     cfg_stage = staging / "config" / "lab"
     cfg_stage.mkdir(parents=True)
     for name in CONFIG_FILES:
-        src = HOME / ".config" / "lab" / name
+        src = TOOL_ROOT / "config" / name
+        if not src.exists():
+            src = HOME / ".config" / "lab" / name
         if src.exists():
             shutil.copy2(src, cfg_stage / name)
     for sub in ("suites", "containers", "pipelines", "templates"):
-        src_dir = HOME / ".config" / "lab" / sub
+        src_dir = TOOL_ROOT / "config" / sub
+        if not src_dir.exists():
+            src_dir = HOME / ".config" / "lab" / sub
         dst_dir = cfg_stage / sub
         dst_dir.mkdir()
         if src_dir.exists():
