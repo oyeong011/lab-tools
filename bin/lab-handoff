@@ -32,7 +32,7 @@ BIN_FILES = [
     "bench-standard-cpu", "bench-stream", "bench-suite", "bench-suite-config",
     "bench-sysbench", "bench-cuda-vector-add", "bench-cuda-gemm", "bench-cuda-uvm-access",
     "bench-cuda-gemv", "bench-cuda-spmv", "bench-cuda-gcn", "bench-apple-metal", "bench-apple-mps",
-    "lab", "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-acceptance-bundle", "lab-acceptance-verify", "lab-doctor", "lab-host-acceptance",
+    "lab", "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-acceptance-bundle", "lab-acceptance-collect", "lab-acceptance-verify", "lab-doctor", "lab-host-acceptance",
     "lab-tools-install", "lab-tools-sync", "lab-handoff", "lab-index", "lab-archive",
     "lab-backup", "lab-plot", "lab-clean",
     "lab-container-build", "lab-container-run", "lab-pipeline", "lab-rtx-smoke", "lab-apple-smoke", "lab-uvm-profile", "lab-validate",

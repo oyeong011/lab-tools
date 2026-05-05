@@ -81,6 +81,7 @@ lab-host-acceptance --run --uvm-profile
 lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile cuda --require-run --require-uvm-profile
 lab-acceptance-bundle --check-bundle ~/lab/_acceptance_bundles/<bundle>.tar.gz --expect-profile cuda --require-run --require-uvm-profile
+lab-acceptance-collect --profile cuda --run --uvm-profile
 ```
 
 MacBook M1/M4 smoke:
@@ -93,6 +94,7 @@ lab-host-acceptance --run
 lab-acceptance-verify ~/lab/_acceptance/<dir> --expect-profile apple --require-run
 lab-acceptance-bundle ~/lab/_acceptance/<dir> --expect-profile apple --require-run
 lab-acceptance-bundle --check-bundle ~/lab/_acceptance_bundles/<bundle>.tar.gz --expect-profile apple --require-run
+lab-acceptance-collect --profile apple --run
 ```
 
 ## 2. 캠페인 산출물

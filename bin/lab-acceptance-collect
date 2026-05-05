@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUN=0
+UVM_PROFILE=0
+DRY_RUN=0
+PROFILE=""
+OUT=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-acceptance-collect [--profile cpu|cuda|apple] [--run] [--uvm-profile] [--out DIR_OR_TAR_GZ] [--dry-run]
+
+Runs the full host acceptance transfer path:
+  1. lab-host-acceptance
+  2. lab-acceptance-verify
+  3. lab-acceptance-bundle
+  4. lab-acceptance-bundle --check-bundle
+
+Use this on an RTX/Ubuntu host to produce the bundle that should be copied back
+to the development machine.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --profile)
+      case "${2:-}" in
+        cpu|cuda|apple) PROFILE="$2"; shift 2 ;;
+        *) usage >&2; exit 2 ;;
+      esac
+      ;;
+    --run) RUN=1; shift ;;
+    --uvm-profile) UVM_PROFILE=1; shift ;;
+    --out) OUT="${2:-}"; [ -n "$OUT" ] || { usage >&2; exit 2; }; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help|help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+if [ -n "$PROFILE" ]; then
+  export LAB_PROFILE="$PROFILE"
+fi
+active_profile="$(lab-profile)"
+
+if [ "$UVM_PROFILE" -eq 1 ] && [ "$active_profile" != cuda ]; then
+  printf 'error: --uvm-profile requires cuda profile, active profile is %s\n' "$active_profile" >&2
+  exit 2
+fi
+
+host_args=()
+verify_args=("--expect-profile" "$active_profile")
+if [ "$RUN" -eq 1 ]; then
+  host_args+=("--run")
+  verify_args+=("--require-run")
+fi
+if [ "$UVM_PROFILE" -eq 1 ]; then
+  host_args+=("--uvm-profile")
+  verify_args+=("--require-uvm-profile")
+fi
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  printf 'profile=%s\n' "$active_profile"
+  printf 'DRY lab-host-acceptance'
+  printf ' %s' "${host_args[@]}"
+  printf '\n'
+  printf 'DRY lab-acceptance-verify <acceptance_dir>'
+  printf ' %s' "${verify_args[@]}"
+  printf '\n'
+  printf 'DRY lab-acceptance-bundle <acceptance_dir>'
+  printf ' %s' "${verify_args[@]}"
+  if [ -n "$OUT" ]; then
+    printf ' --out %s' "$OUT"
+  fi
+  printf '\n'
+  printf 'DRY lab-acceptance-bundle --check-bundle <bundle.tar.gz>'
+  printf ' %s' "${verify_args[@]}"
+  printf '\n'
+  exit 0
+fi
+
+host_log="$(mktemp)"
+bundle_log="$(mktemp)"
+trap 'rm -f "$host_log" "$bundle_log"' EXIT
+
+set +e
+lab-host-acceptance "${host_args[@]}" | tee "$host_log"
+host_rc=${PIPESTATUS[0]}
+set -e
+if [ "$host_rc" -ne 0 ]; then
+  exit "$host_rc"
+fi
+
+acceptance_dir="$(sed -n 's/^acceptance_dir=//p' "$host_log" | tail -n 1)"
+if [ -z "$acceptance_dir" ] || [ ! -d "$acceptance_dir" ]; then
+  printf 'error: acceptance_dir not found in lab-host-acceptance output\n' >&2
+  exit 1
+fi
+
+lab-acceptance-verify "$acceptance_dir" "${verify_args[@]}"
+
+bundle_cmd=(lab-acceptance-bundle "$acceptance_dir" "${verify_args[@]}")
+if [ -n "$OUT" ]; then
+  bundle_cmd+=("--out" "$OUT")
+fi
+"${bundle_cmd[@]}" | tee "$bundle_log"
+
+bundle_path="$(sed -n 's/^bundle=//p' "$bundle_log" | tail -n 1)"
+if [ -z "$bundle_path" ] || [ ! -f "$bundle_path" ]; then
+  printf 'error: bundle path not found in lab-acceptance-bundle output\n' >&2
+  exit 1
+fi
+
+lab-acceptance-bundle --check-bundle "$bundle_path" "${verify_args[@]}"
+
+printf '\nacceptance_dir=%s\n' "$acceptance_dir"
+printf 'acceptance_bundle=%s\n' "$bundle_path"
