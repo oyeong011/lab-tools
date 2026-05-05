@@ -114,6 +114,9 @@ lab-host-acceptance                   # reproducible host readiness artifact
 lab-acceptance-verify ~/lab/_acceptance/<dir>
 ```
 
+For the current completion status and the remaining RTX hardware gate, see
+`notes/completion-audit.md`.
+
 After install, on Intel CPUs:
 
 ```bash
