@@ -4,17 +4,18 @@
 # Profile values:
 #   cpu   — no NVIDIA GPU; CPU and OpenCL benchmarks only (e.g. i7-7700 + HD 630)
 #   cuda  — NVIDIA GPU + CUDA toolkit present; CUDA benchmarks enabled
+#   apple — macOS Apple Silicon; standalone Metal smoke benchmarks available
 #
-# Override with: LAB_PROFILE=cpu|cuda
-# Persistent override: ~/.config/lab/profile (one line: cpu OR cuda)
+# Override with: LAB_PROFILE=cpu|cuda|apple
+# Persistent override: ~/.config/lab/profile (one line: cpu, cuda, or apple)
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
 Usage:
-  lab-profile          Print the active profile (cpu|cuda)
+  lab-profile          Print the active profile (cpu|cuda|apple)
   lab-profile detect   Print only the auto-detected profile (ignores override)
-  lab-profile set cpu|cuda
+  lab-profile set cpu|cuda|apple
                        Persist profile to ~/.config/lab/profile
   lab-profile clear    Remove the persistent override
 EOF
@@ -27,6 +28,8 @@ detect() {
      && nvidia-smi -L >/dev/null 2>&1 \
      && command -v nvcc >/dev/null 2>&1; then
     printf 'cuda'
+  elif [ "$(uname -s 2>/dev/null || true)" = Darwin ] && [ "$(uname -m 2>/dev/null || true)" = arm64 ]; then
+    printf 'apple'
   else
     printf 'cpu'
   fi
@@ -49,7 +52,7 @@ case "${1:-show}" in
   detect) detect; printf '\n' ;;
   set)
     case "${2:-}" in
-      cpu|cuda)
+      cpu|cuda|apple)
         mkdir -p "$(dirname "$PROFILE_FILE")"
         printf '%s\n' "$2" > "$PROFILE_FILE"
         printf 'Set persistent profile: %s -> %s\n' "$2" "$PROFILE_FILE"

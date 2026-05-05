@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUN=0
+PROFILE_SIZE_MB="${LAB_RTX_SMOKE_UVM_MB:-512}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-rtx-smoke [--run]
+
+Checks an Ubuntu NVIDIA host for lab-tools CUDA readiness. By default it does
+not run benchmark suites; it verifies tools, profile detection, dry-run config
+resolution, and CUDA source availability. With --run, it executes one small
+managed-memory UVM probe and one GEMV/SpMV pass.
+
+Environment:
+  LAB_RTX_SMOKE_UVM_MB=512   Managed-memory size for --run UVM smoke
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --run) RUN=1; shift ;;
+    -h|--help|help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+section() {
+  printf '\n== %s ==\n' "$1"
+}
+
+need_cmd() {
+  if command -v "$1" >/dev/null 2>&1; then
+    printf 'ok   %-18s %s\n' "$1" "$(command -v "$1")"
+  else
+    printf 'fail %-18s missing\n' "$1"
+    return 1
+  fi
+}
+
+failures=0
+section "Commands"
+for cmd in nvidia-smi nvcc python3 lab-profile lab-doctor bench-suite-config bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv; do
+  need_cmd "$cmd" || failures=$((failures + 1))
+done
+
+section "NVIDIA device"
+if command -v nvidia-smi >/dev/null 2>&1; then
+  nvidia-smi -L || failures=$((failures + 1))
+  nvidia-smi --query-gpu=name,driver_version,cuda_version,memory.total,power.limit,persistence_mode --format=csv || true
+  nvidia-smi topo -m || true
+fi
+
+section "Profile"
+detected="$(lab-profile detect 2>/dev/null || printf unknown)"
+active="$(lab-profile 2>/dev/null || printf unknown)"
+printf 'detected=%s active=%s\n' "$detected" "$active"
+if [ "$detected" != cuda ]; then
+  printf 'fail profile detection is not cuda; verify nvidia-smi and nvcc\n'
+  failures=$((failures + 1))
+fi
+
+section "Suite dry-runs"
+bench-suite-config --dry-run forest-uvm.yaml || failures=$((failures + 1))
+LAB_WORKLOADS=cuda-gemv,cuda-spmv LAB_GEMV_SIZE=1024 LAB_SPMV_ROWS=65536 LAB_SPMV_NNZ_PER_ROW=16 \
+  bench-suite-config --dry-run memory-kernels.yaml || failures=$((failures + 1))
+
+if [ "$RUN" -eq 1 ]; then
+  section "CUDA workload smoke"
+  LAB_UVM_MB="$PROFILE_SIZE_MB" LAB_UVM_PATTERN=ls LAB_UVM_PASSES=1 bench-cuda-uvm-access || failures=$((failures + 1))
+  LAB_GEMV_SIZE=1024 bench-cuda-gemv || failures=$((failures + 1))
+  LAB_SPMV_ROWS=65536 LAB_SPMV_NNZ_PER_ROW=16 bench-cuda-spmv || failures=$((failures + 1))
+else
+  printf '\nDry smoke only. Re-run with --run to execute CUDA probes.\n'
+fi
+
+if [ "$failures" -ne 0 ]; then
+  printf '\nstatus=fail failures=%s\n' "$failures"
+  exit 1
+fi
+printf '\nstatus=ok\n'

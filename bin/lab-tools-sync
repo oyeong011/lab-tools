@@ -16,9 +16,9 @@ copy_file() {
 for file in \
   ai-accel-check bench-cpu bench-openblas bench-opencl bench-opencl-gemm \
   bench-standard-cpu bench-stream bench-suite bench-suite-config bench-sysbench \
-  bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access \
-	  hw-report lab lab-doctor lab-handoff lab-manifest lab-pin-system lab-profile lab-safe-run \
-	  lab-pipeline lab-validate lab-tools-sync lab-tools-install monitor-run \
+  bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv bench-apple-metal \
+	  hw-report lab lab-apple-smoke lab-doctor lab-handoff lab-manifest lab-pin-system lab-profile lab-rtx-smoke lab-safe-run \
+	  lab-pipeline lab-uvm-profile lab-validate lab-tools-sync lab-tools-install monitor-run \
 	  nvidia-check nvml-check render-suite-report render-suite-html render-method-section render-repro-checklist \
 	  sensor-snapshot suite-stats suite-compare summarize-suite thermal-check \
 	  lab-index lab-archive lab-backup lab-plot lab-clean lab-container-build lab-container-run lab-nvidia-ready
@@ -26,7 +26,7 @@ do
   copy_file "$HOME/bin/$file" "$REPO/bin/$file"
 done
 
-for file in "$HOME"/.config/lab/*.c "$HOME"/.config/lab/*.cu; do
+for file in "$HOME"/.config/lab/*.c "$HOME"/.config/lab/*.cu "$HOME"/.config/lab/*.swift; do
   [ -e "$file" ] || continue
   copy_file "$file" "$REPO/config/$(basename "$file")"
 done

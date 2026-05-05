@@ -56,6 +56,7 @@ lab-pipeline list
 lab-pipeline review
 lab-pipeline plan consumer-accelerator-baseline --profile cpu --dry-run
 lab-pipeline plan forest-uvm-access --profile cuda --sweep --dry-run
+lab-pipeline plan memory-hierarchy-pim --profile cuda --sweep --dry-run
 lab-validate matrix ~/.config/lab/pipelines/research-matrix.yaml
 ```
 
@@ -64,6 +65,21 @@ pattern/oversubscription 축을 실제 CUDA UVM 마이크로프로브로 준비�
 경로입니다. 단, 이것은 Forest의 UVM driver/hardware 변경 구현이 아니므로
 page fault, migration, thrashing 주장은 CUPTI/Nsight/driver counter 또는
 시뮬레이터 계측과 함께 써야 합니다.
+
+RTX 5060/5080 호스트에서 실제 smoke:
+```bash
+lab-profile set cuda
+lab-rtx-smoke
+lab-rtx-smoke --run
+lab-uvm-profile --pattern hchi --mb 12288 --passes 2
+bench-suite-config memory-kernels
+```
+
+MacBook M1/M4 smoke:
+```bash
+lab-apple-smoke
+LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
+```
 
 ## 2. 캠페인 산출물
 

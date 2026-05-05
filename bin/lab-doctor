@@ -41,7 +41,7 @@ printf 'profile=%s\n\n' "$PROFILE"
 printf '== Framework commands (all profiles) ==\n'
 for cmd in \
   lab-safe-run lab-pin-system lab-profile lab-tools-install lab-tools-sync \
-  lab-pipeline lab-validate \
+  lab-apple-smoke lab-pipeline lab-rtx-smoke lab-uvm-profile lab-validate \
   lab-doctor lab-manifest lab-handoff lab-index lab-archive lab-backup lab-plot lab-clean \
   bench-suite bench-suite-config summarize-suite suite-stats suite-compare \
   render-suite-report render-suite-html render-method-section render-repro-checklist \
@@ -83,12 +83,12 @@ fi
 printf '\n== CUDA toolchain ==\n'
 case "$PROFILE" in
   cuda)
-    for cmd in nvidia-smi nvcc nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access; do
+    for cmd in nvidia-smi nvcc nsys nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv lab-rtx-smoke lab-uvm-profile; do
       check_cmd "$cmd"
     done
     ;;
   *)
-    for cmd in nvidia-smi nvcc nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access; do
+    for cmd in nvidia-smi nvcc nsys nvml-check bench-cuda-vector-add bench-cuda-gemm bench-cuda-uvm-access bench-cuda-gemv bench-cuda-spmv lab-rtx-smoke lab-uvm-profile; do
       info_cmd "$cmd"
     done
     printf 'note     profile=cpu — CUDA tools optional on this host\n'
@@ -109,7 +109,14 @@ if [ "$PROFILE" = cuda ]; then
   check_file "$HOME/.config/lab/cuda-vector-add.cu"
   check_file "$HOME/.config/lab/cuda-gemm.cu"
   check_file "$HOME/.config/lab/cuda-uvm-access.cu"
+  check_file "$HOME/.config/lab/cuda-memory-kernels.cu"
   check_file "$HOME/.config/lab/containers/Containerfile.cuda"
+fi
+
+if [ "$(uname -s)" = Darwin ]; then
+  printf '\n== Apple profile files ==\n'
+  check_cmd bench-apple-metal
+  check_file "$HOME/.config/lab/apple-metal-vector.swift"
 fi
 
 printf '\n== Container images ==\n'

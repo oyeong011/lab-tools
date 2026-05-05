@@ -41,6 +41,7 @@ class LabToolsSmokeTests(unittest.TestCase):
         self.run_cmd(["bin/lab-validate", "matrix", "config/pipelines/research-matrix.yaml"])
         self.run_cmd(["bin/lab-validate", "suite-config", "config/suites/baseline.yaml"])
         self.run_cmd(["bin/lab-validate", "suite-config", "config/suites/forest-uvm.yaml"])
+        self.run_cmd(["bin/lab-validate", "suite-config", "config/suites/memory-kernels.yaml"])
 
     def test_pipeline_dry_runs(self):
         out = self.run_cmd(["bin/lab-pipeline", "list"]).stdout
@@ -65,6 +66,15 @@ class LabToolsSmokeTests(unittest.TestCase):
         ]).stdout
         self.assertIn("uvm_pattern-ls", out)
         self.assertIn("uvm_pattern-hchi", out)
+        out = self.run_cmd([
+            "bin/lab-pipeline",
+            "plan",
+            "memory-hierarchy-pim",
+            "--profile",
+            "cuda",
+            "--dry-run",
+        ]).stdout
+        self.assertIn("memory-hierarchy-pim-gemv_size", out)
 
     def test_bench_suite_config_dry_run(self):
         out = self.run_cmd(["bin/bench-suite-config", "--dry-run", "config/suites/forest-uvm.yaml"]).stdout

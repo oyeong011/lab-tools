@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUN=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-apple-smoke [--run]
+
+Checks an Apple Silicon Mac for the first-stage Apple profile. With --run, it
+executes the Metal vector-add smoke benchmark.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --run) RUN=1; shift ;;
+    -h|--help|help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+section() {
+  printf '\n== %s ==\n' "$1"
+}
+
+failures=0
+section "System"
+uname -a
+sysctl -n machdep.cpu.brand_string 2>/dev/null || true
+system_profiler SPDisplaysDataType 2>/dev/null | sed -n '1,80p' || true
+
+section "Commands"
+for cmd in swift xcrun bench-apple-metal; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    printf 'ok   %-18s %s\n' "$cmd" "$(command -v "$cmd")"
+  else
+    printf 'fail %-18s missing\n' "$cmd"
+    failures=$((failures + 1))
+  fi
+done
+if command -v powermetrics >/dev/null 2>&1; then
+  printf 'ok   %-18s %s\n' powermetrics "$(command -v powermetrics)"
+else
+  printf 'info %-18s missing or not in PATH; package power capture will need sudo powermetrics\n' powermetrics
+fi
+
+if [ "$RUN" -eq 1 ]; then
+  section "Metal benchmark"
+  LAB_APPLE_ELEMENTS="${LAB_APPLE_ELEMENTS:-1048576}" bench-apple-metal || failures=$((failures + 1))
+else
+  printf '\nDry smoke only. Re-run with --run to execute Metal vector add.\n'
+fi
+
+if [ "$failures" -ne 0 ]; then
+  printf '\nstatus=fail failures=%s\n' "$failures"
+  exit 1
+fi
+printf '\nstatus=ok\n'

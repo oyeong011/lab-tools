@@ -49,6 +49,7 @@ def collect_tracked_files(bin_dir, config_dir):
     tracked.extend(sorted(bin_dir.glob("bench-*")))
     tracked.extend(sorted(config_dir.glob("*.c")))
     tracked.extend(sorted(config_dir.glob("*.cu")))
+    tracked.extend(sorted(config_dir.glob("*.swift")))
     for sub in ("suites", "containers", "templates", "pipelines"):
         tracked.extend(sorted((config_dir / sub).glob("*")))
     return [p for p in tracked if p.exists()]
@@ -92,6 +93,10 @@ def main():
                 "LAB_UVM_MB",
                 "LAB_UVM_PATTERN",
                 "LAB_UVM_PASSES",
+                "LAB_GEMV_SIZE",
+                "LAB_SPMV_ROWS",
+                "LAB_SPMV_NNZ_PER_ROW",
+                "LAB_APPLE_ELEMENTS",
                 "LAB_WARMUPS",
                 "LAB_REPEATS",
                 "LAB_STREAM_ELEMENTS",

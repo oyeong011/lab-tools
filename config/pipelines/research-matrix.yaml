@@ -59,6 +59,7 @@ environments:
       - nvidia-smi
       - nvcc
       - CUDA toolkit
+      - Nsight Systems nsys
       - gcc
       - python3-yaml
     measurable_resources:
@@ -68,16 +69,19 @@ environments:
       - Intel RAPL package/core/uncore/DRAM energy
       - GPU temperature
   darwin-apple-silicon:
-    status: planned
+    status: smoke
     host_examples:
       - MacBook M1
       - MacBook M4
     profile: apple
     setup:
-      - planned: add Metal/MPS kernels and powermetrics collection
+      - bash bin/lab-tools-install
+      - lab-apple-smoke
+      - LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
     required_tools:
       - clang
       - Metal or MPS workload path
+      - swift
       - powermetrics
     measurable_resources:
       - wall time
@@ -190,16 +194,27 @@ tracks:
 
   memory-hierarchy-pim:
     title: Memory hierarchy, DRAM, PIM, GEMV, SpMV, and address mapping
-    status: planned
+    status: partial
     environments:
       - linux-cpu-opencl
       - linux-cuda-nvidia
     workloads:
-      - GEMV
-      - SpMV
+      - cuda-gemv
+      - cuda-spmv
       - sparse-dense matrix multiplication
       - address-mapping sweep
       - row activation counting trace
+    suite: memory-kernels
+    tunables:
+      LAB_GEMV_SIZE:
+        values: [1024, 2048, 4096]
+        meaning: Dense square GEMV dimension.
+      LAB_SPMV_ROWS:
+        values: [65536, 262144, 1048576]
+        meaning: CSR SpMV row count.
+      LAB_SPMV_NNZ_PER_ROW:
+        values: [8, 16, 32]
+        meaning: Fixed nonzeros per row for synthetic CSR SpMV.
     metrics:
       lower_is_better:
         - row_buffer_miss_rate
@@ -210,6 +225,7 @@ tracks:
         - effective_bandwidth
         - ops_per_joule
     reviewer_guardrails:
+      - The wired path covers CUDA GEMV/SpMV microbenchmarks only.
       - Tie every mapping claim to a visible address mapping or trace.
       - Do not infer DRAM row-buffer behavior from wall time alone.
 

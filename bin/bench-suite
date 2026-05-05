@@ -26,6 +26,8 @@ declare -A WORKLOAD_CMD=(
   [cuda-vector]=bench-cuda-vector-add
   [cuda-gemm]=bench-cuda-gemm
   [cuda-uvm]=bench-cuda-uvm-access
+  [cuda-gemv]=bench-cuda-gemv
+  [cuda-spmv]=bench-cuda-spmv
 )
 declare -A WORKLOAD_LABEL=(
   [cpu]="CPU"
@@ -35,6 +37,8 @@ declare -A WORKLOAD_LABEL=(
   [cuda-vector]="CUDA"
   [cuda-gemm]="CUDA GEMM"
   [cuda-uvm]="CUDA UVM access-pattern"
+  [cuda-gemv]="CUDA GEMV"
+  [cuda-spmv]="CUDA SpMV"
 )
 
 PROFILE="$(lab-profile 2>/dev/null || printf cpu)"

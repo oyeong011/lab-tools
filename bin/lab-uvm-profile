@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+PROFILE_DIR="$LAB_HOME/_profiles"
+PATTERN="${LAB_UVM_PATTERN:-ls}"
+MB="${LAB_UVM_MB:-512}"
+PASSES="${LAB_UVM_PASSES:-2}"
+OUT_PREFIX=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$SCRIPT_DIR:$HOME/bin:$PATH"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  lab-uvm-profile [--pattern ls|hchi|hcli|lc] [--mb N] [--passes N] [--out PREFIX]
+
+Runs bench-cuda-uvm-access under NVIDIA Nsight Systems with CUDA Unified Memory
+CPU/GPU page-fault tracing enabled. This is intentionally separate from normal
+bench-suite runs because Unified Memory fault tracing can add large overhead.
+
+Outputs are written under ~/lab/_profiles by default:
+  <prefix>.nsys-rep
+  <prefix>.sqlite
+  <prefix>-stats/  (CSV exports when nsys stats is available)
+
+Requires:
+  nsys, nvcc, nvidia-smi, bench-cuda-uvm-access
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pattern) PATTERN="${2:-}"; shift 2 ;;
+    --mb) MB="${2:-}"; shift 2 ;;
+    --passes) PASSES="${2:-}"; shift 2 ;;
+    --out) OUT_PREFIX="${2:-}"; shift 2 ;;
+    -h|--help|help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+case "$PATTERN" in
+  ls|hchi|hcli|lc) ;;
+  *) printf 'Unsupported pattern: %s\n' "$PATTERN" >&2; exit 2 ;;
+esac
+
+for cmd in nsys nvcc nvidia-smi bench-cuda-uvm-access; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    printf 'Required command missing: %s\n' "$cmd" >&2
+    exit 127
+  fi
+done
+
+mkdir -p "$PROFILE_DIR"
+if [ -z "$OUT_PREFIX" ]; then
+  OUT_PREFIX="$PROFILE_DIR/uvm-${PATTERN}-${MB}mb-$(date +%Y%m%d-%H%M%S)"
+fi
+
+printf 'profile_out=%s\n' "$OUT_PREFIX"
+printf 'pattern=%s managed_mb=%s passes=%s\n' "$PATTERN" "$MB" "$PASSES"
+
+LAB_UVM_PATTERN="$PATTERN" LAB_UVM_MB="$MB" LAB_UVM_PASSES="$PASSES" \
+  nsys profile \
+    --force-overwrite=true \
+    --trace=cuda,osrt,nvtx \
+    --cuda-memory-usage=true \
+    --cuda-um-cpu-page-faults=true \
+    --cuda-um-gpu-page-faults=true \
+    --stats=false \
+    --output="$OUT_PREFIX" \
+    bench-cuda-uvm-access
+
+if command -v nsys >/dev/null 2>&1; then
+  STATS_DIR="${OUT_PREFIX}-stats"
+  mkdir -p "$STATS_DIR"
+  for report in um_sum um_total_sum um_cpu_page_faults_sum cuda_gpu_mem_time_sum cuda_gpu_mem_size_sum cuda_gpu_kern_sum cuda_api_sum; do
+    nsys stats --report "$report" --format csv --output "$STATS_DIR/$report" "${OUT_PREFIX}.nsys-rep" >/dev/null 2>&1 || true
+  done
+  printf 'stats_dir=%s\n' "$STATS_DIR"
+fi
+
+printf 'nsys_report=%s.nsys-rep\n' "$OUT_PREFIX"

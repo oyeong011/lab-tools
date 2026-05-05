@@ -29,8 +29,9 @@ BIN_FILES = [
     "bench-cpu", "bench-openblas", "bench-opencl", "bench-opencl-gemm",
     "bench-standard-cpu", "bench-stream", "bench-suite", "bench-suite-config",
     "bench-sysbench", "bench-cuda-vector-add", "bench-cuda-gemm", "bench-cuda-uvm-access",
+    "bench-cuda-gemv", "bench-cuda-spmv", "bench-apple-metal",
     "lab-manifest", "lab-pin-system", "lab-safe-run", "lab-profile", "lab-doctor",
-    "lab-container-build", "lab-container-run", "lab-pipeline", "lab-validate",
+    "lab-container-build", "lab-container-run", "lab-pipeline", "lab-rtx-smoke", "lab-apple-smoke", "lab-uvm-profile", "lab-validate",
     "render-suite-report", "render-method-section", "render-repro-checklist",
     "sensor-snapshot", "summarize-suite", "suite-stats", "suite-compare",
     "thermal-check", "ai-accel-check", "hw-report", "monitor-run",
@@ -39,7 +40,8 @@ BIN_FILES = [
 
 CONFIG_FILES = [
     "opencl-vector-add.c", "opencl-gemm.c", "stream-triad.c", "openblas-gemm.c",
-    "cuda-vector-add.cu", "cuda-gemm.cu", "cuda-uvm-access.cu",
+    "cuda-vector-add.cu", "cuda-gemm.cu", "cuda-uvm-access.cu", "cuda-memory-kernels.cu",
+    "apple-metal-vector.swift",
 ]
 
 
@@ -80,7 +82,7 @@ def write_readme(staging: Path, suite: Path, runs, manifest_excerpt):
         f.write("cd ~/lab-handoff/<bundle-name>\n")
         f.write("# Install scripts\n")
         f.write("install -Dm755 bin/* ~/bin/\n")
-        f.write("install -Dm644 -t ~/.config/lab/ config/lab/*.c config/lab/*.cu\n")
+        f.write("install -Dm644 -t ~/.config/lab/ config/lab/*.c config/lab/*.cu config/lab/*.swift\n")
         f.write("install -Dm644 -t ~/.config/lab/suites/ config/lab/suites/* 2>/dev/null || true\n")
         f.write("install -Dm644 -t ~/.config/lab/pipelines/ config/lab/pipelines/* 2>/dev/null || true\n")
         f.write("install -Dm644 -t ~/.config/lab/containers/ config/lab/containers/* 2>/dev/null || true\n")

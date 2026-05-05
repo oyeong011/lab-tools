@@ -30,8 +30,8 @@ The default matrix is installed to
 |---|---|---|
 | `consumer-accelerator-baseline` | wired | CPU/OpenCL/CUDA baseline performance, energy, and reproducibility |
 | `forest-uvm-access` | wired | Forest-inspired CUDA managed-memory access-pattern probe |
+| `memory-hierarchy-pim` | partial | CUDA GEMV/SpMV microbenchmarks for bandwidth-dominated memory kernels |
 | `edge-ai-cnn-transformer` | planned | CNN/Transformer accelerator workloads |
-| `memory-hierarchy-pim` | planned | GEMV/SpMV/PIM/DRAM/address-mapping studies |
 | `multi-tenant-migration-storage` | planned | tensor migration, UVM, storage oversubscription |
 | `cluster-communication` | planned | NCCL/PXN rail and topology experiments |
 | `security-counter-cache` | planned | defensive cache/counter characterization |
@@ -49,6 +49,33 @@ Validate configs and generated suites with:
 lab-validate matrix ~/.config/lab/pipelines/research-matrix.yaml
 lab-validate suite-config ~/.config/lab/suites/forest-uvm.yaml
 lab-validate suite-dir <suite_dir>
+```
+
+RTX host smoke and UVM mechanism profiling:
+
+```bash
+lab-rtx-smoke                 # dry readiness check
+lab-rtx-smoke --run           # executes small CUDA UVM/GEMV/SpMV probes
+lab-uvm-profile --pattern hchi --mb 12288 --passes 2
+```
+
+`lab-uvm-profile` uses NVIDIA Nsight Systems Unified Memory CPU/GPU page-fault
+tracing. NVIDIA documents these as high-overhead tracing options, so keep them
+out of normal timing suites and use them to explain mechanisms after locating
+interesting UVM cases.
+
+Memory-kernel sweep:
+
+```bash
+lab-pipeline plan memory-hierarchy-pim --profile cuda --sweep
+bench-suite-config ~/.config/lab/suites/memory-kernels.yaml
+```
+
+Apple Silicon smoke:
+
+```bash
+lab-apple-smoke
+LAB_APPLE_ELEMENTS=1048576 lab-apple-smoke --run
 ```
 
 The profile auto-detects from `nvidia-smi` + `nvcc`. Override:

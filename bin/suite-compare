@@ -26,6 +26,8 @@ METRICS = [
     "cuda_kernel_s",
     "cuda_bandwidth_gbs",
     "cuda_gemm_gflops",
+    "cuda_gemv_gflops",
+    "cuda_spmv_gflops",
     "duration_s",
     "pkg_energy_j",
     "core_energy_j",

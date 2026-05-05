@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+N="${1:-${LAB_APPLE_ELEMENTS:-16777216}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC="$HOME/.config/lab/apple-metal-vector.swift"
+if [ ! -f "$SRC" ] && [ -f "$SCRIPT_DIR/../config/apple-metal-vector.swift" ]; then
+  SRC="$SCRIPT_DIR/../config/apple-metal-vector.swift"
+fi
+BUILD_DIR="$LAB_HOME/_benchmarks/apple"
+OUT="$BUILD_DIR/apple-metal-vector-${N}-$(date +%Y%m%d-%H%M%S).txt"
+
+if [ "$(uname -s)" != Darwin ]; then
+  printf 'bench-apple-metal requires macOS with Apple Metal.\n' >&2
+  exit 127
+fi
+if ! command -v swift >/dev/null 2>&1; then
+  printf 'swift is not available. Install Xcode Command Line Tools.\n' >&2
+  exit 127
+fi
+if [ ! -f "$SRC" ]; then
+  printf 'Missing source: %s\n' "$SRC" >&2
+  exit 2
+fi
+
+mkdir -p "$BUILD_DIR"
+swift "$SRC" "$N" | tee "$OUT"
+printf '\nSaved: %s\n' "$OUT"

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_HOME="${LAB_HOME:-$HOME/lab}"
+N="${1:-${LAB_GEMV_SIZE:-4096}}"
+SRC="$HOME/.config/lab/cuda-memory-kernels.cu"
+BUILD_DIR="$LAB_HOME/_benchmarks/cuda"
+BIN="$BUILD_DIR/cuda-memory-kernels"
+OUT="$BUILD_DIR/cuda-gemv-${N}-$(date +%Y%m%d-%H%M%S).txt"
+
+if ! command -v nvcc >/dev/null 2>&1; then
+  printf 'nvcc not available — install CUDA toolkit or run inside lab-cuda container.\n' >&2
+  exit 127
+fi
+
+mkdir -p "$BUILD_DIR"
+if [ ! -x "$BIN" ] || [ "$SRC" -nt "$BIN" ]; then
+  nvcc -O2 "$SRC" -o "$BIN"
+  printf 'Build: compiled %s\n' "$BIN"
+else
+  printf 'Build: reused %s\n' "$BIN"
+fi
+"$BIN" gemv "$N" | tee "$OUT"
+printf '\nSaved: %s\n' "$OUT"

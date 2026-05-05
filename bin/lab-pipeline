@@ -53,13 +53,15 @@ def detect_profile():
 def known_workload_supported(workload, profile):
     if workload.startswith("cuda-"):
         return profile == "cuda"
+    if workload.startswith("apple-"):
+        return profile == "apple"
     return True
 
 
 def workload_env(track, profile):
     workloads = [w for w in track.get("workloads", []) if isinstance(w, str)]
     runnable = [w for w in workloads if known_workload_supported(w, profile)]
-    known_prefixes = ("cpu", "standard-cpu", "opencl", "cuda")
+    known_prefixes = ("cpu", "standard-cpu", "opencl", "cuda", "apple")
     runnable = [w for w in runnable if w.startswith(known_prefixes)]
     if not runnable:
         return {}
@@ -167,8 +169,8 @@ def cmd_review(args):
         print(f"## {name} ({track.get('status', 'unknown')})")
         for item in track.get("reviewer_guardrails", []):
             print(f"- {item}")
-        if track.get("status") != "wired":
-            print("- Status is planned: do not report performance claims until workloads, counters, and tests are wired.")
+    if track.get("status") not in ("wired", "partial", "smoke"):
+        print("- Status is planned: do not report performance claims until workloads, counters, and tests are wired.")
         print()
 
 
@@ -188,7 +190,7 @@ def cmd_plan(args):
     print(f"profile: {profile}")
     print(f"status: {track.get('status', 'unknown')}")
 
-    if track.get("status") != "wired":
+    if track.get("status") not in ("wired", "partial", "smoke"):
         print("planned track only; no runnable suite files generated")
         print("reviewer guardrails:")
         for item in track.get("reviewer_guardrails", []):
