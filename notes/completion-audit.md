@@ -43,9 +43,9 @@ covering:
 | Whole matrix bundle audit | `bin/lab-acceptance-matrix`, `config/acceptance/required-hosts.json` | Fresh clone dry-run and unit test cover target mapping; real completion still requires missing bundles | Ready |
 | SSH automation | `bin/lab-remote-acceptance` | Fresh clone remote dry-run passes; actual run requires SSH target | Ready |
 | Suite handoff | `bin/lab-handoff` | Includes acceptance tools; uses Python SHA256; test opens produced tarball | Done |
-| GitHub push | `origin/main` | Local `HEAD` equals `origin/main` | Done |
-| CI gate | `.github/workflows/ci.yml` | Latest main CI success: `25361654664` | Done |
-| Fresh clone reproducibility | `git clone https://github.com/oyeong011/lab-tools` | Fresh clone unittest, install dry-run, remote dry-run pass | Done |
+| GitHub push | `origin/main` | Local `HEAD` equals `origin/main` at `a32980f4b6f9625a037d6426a7687f5567a302c2` | Done |
+| CI gate | `.github/workflows/ci.yml` | Latest main CI success: `25363550636` for `a32980f4b6f9625a037d6426a7687f5567a302c2` | Done |
+| Fresh clone reproducibility | `git clone https://github.com/oyeong011/lab-tools` | Fresh clone unittest, install dry-run, acceptance-matrix dry-run, and remote dry-run pass | Done |
 | RTX 5060/5080 real hardware validation | `lab-remote-acceptance <target> --profile cuda --run --uvm-profile` | No RTX SSH target or bundle has been provided; current host lacks `nvidia-smi`, `nvcc`, and `nsys` | Missing |
 
 ## Current Evidence Snapshot
@@ -54,10 +54,17 @@ covering:
   `git status --short --branch` after each push.
 - Current CI evidence should be checked with
   `gh run list --repo oyeong011/lab-tools --branch main --limit 1`.
+- Last checked pushed commit: `a32980f4b6f9625a037d6426a7687f5567a302c2`.
+- Last checked CI: <https://github.com/oyeong011/lab-tools/actions/runs/25363550636>.
 - Current host: Darwin arm64 Apple Silicon.
 - Current host has no `nvidia-smi`, `nvcc`, or `nsys` on `PATH`.
 - A local Apple acceptance collect run produced and verified an acceptance
   bundle under `~/lab/_acceptance_bundles`.
+- No Google Drive desktop sync folder was found under
+  `~/Library/CloudStorage` or `/Volumes` on this Mac during the latest check.
+  The current local acceptance bundle directory is small; when RTX Nsight
+  bundles become large, move each `.tar.gz` together with its `.sha256` sidecar
+  to Drive and run `lab-acceptance-matrix --bundle-dir <Drive folder>`.
 
 ## Required RTX Completion Command
 
